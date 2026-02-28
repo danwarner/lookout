@@ -115,6 +115,8 @@ use_cases/       Orchestration — radar_scan, monitor_scan, compile_digest
 cli/             Click CLI
 ```
 
+![Lookout architecture](lookout-chart.png)
+
 Two-phase pipeline per scan:
 1. **Search** — Claude + `web_search` tool gathers raw intelligence
 2. **Analysis** — Claude (no tools) structures, scores, and diffs the results as JSON

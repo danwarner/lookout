@@ -16,7 +16,7 @@ Lookout would have caught Mave AI 15 months earlier. The [example config](config
 
 ![Lookout scan output](lookout.png)
 
-![Lookout email radar report](lookout-radar-email.png)
+![Lookout email radar report](lookout-email-radar.png)
 
 ## How it works
 

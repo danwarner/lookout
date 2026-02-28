@@ -31,7 +31,7 @@ Lookout uses Claude's web search as its sole data source. No scraping, no browse
 ## Quick start
 
 ```bash
-git clone https://github.com/danielwarner/lookout.git
+git clone https://github.com/danwarner/lookout.git
 cd lookout
 uv sync
 ```

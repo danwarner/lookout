@@ -9,6 +9,87 @@ import anthropic
 from lookout.domain.entities import Change, ChangeSeverity, Signal, ThreatLevel
 from lookout.interfaces.llm_analyzer import LLMAnalyzer
 
+# Static system prompts — cached across calls to reduce input token costs.
+
+SCORE_RELEVANCE_SYSTEM = """You are a competitive intelligence analyst. Score a discovered company against our market definition. Respond ONLY with valid JSON, no other text.
+
+Return JSON with this exact structure:
+{
+  "name": "company name",
+  "website": "company website or null",
+  "description": "what they do",
+  "funding_status": "funding info or null",
+  "founding_date": "date or null",
+  "location": "location or null",
+  "relevance_score": 0-100,
+  "threat_level": "high" or "medium" or "low",
+  "reasoning": "why this score",
+  "icp_overlap": "how their customers overlap with ours",
+  "key_differentiators": "what makes them different from us"
+}"""
+
+SCORE_BATCH_SYSTEM = """You are a competitive intelligence analyst. Analyze search results, extract individual companies, and score each one.
+
+For each distinct company found (exclude the user's own company), return a JSON array. Each element should have:
+{
+  "name": "company name",
+  "website": "company website or null",
+  "description": "what they do",
+  "funding_status": "funding info or null",
+  "founding_date": "date or null",
+  "location": "location or null",
+  "relevance_score": 0-100,
+  "threat_level": "high" or "medium" or "low",
+  "reasoning": "why this score",
+  "icp_overlap": "how their customers overlap with ours",
+  "key_differentiators": "what makes them different from us"
+}
+
+Respond ONLY with the JSON array, no other text."""
+
+STRUCTURE_INTEL_SYSTEM = """You are a competitive intelligence analyst. Extract structured information from raw intelligence about a company.
+
+Return ONLY valid JSON. For "jobs", use an array of strings. For all others, use a summary string. The *_source_urls fields are optional — only include them if source URLs are available."""
+
+ANALYZE_DIFF_SYSTEM = """You are a competitive intelligence analyst. Compare two snapshots of a company's public presence and identify MEANINGFUL changes only. Ignore cosmetic rewording or minor phrasing differences.
+
+Categories to check: pricing_changes, feature_changes, hiring_signals, funding_news, messaging_shifts
+
+Include 1-3 of the most relevant source URLs per change if *_source_urls fields are present in the current snapshot.
+
+Return a JSON object:
+{
+  "changes": [
+    {
+      "category": "pricing_changes|feature_changes|hiring_signals|funding_news|messaging_shifts",
+      "summary": "brief description of change",
+      "previous_value": "what it was before",
+      "current_value": "what it is now",
+      "impact_assessment": "what this change might mean strategically",
+      "severity": "high|medium|low",
+      "source_urls": ["url1", "url2"]
+    }
+  ]
+}
+
+If no meaningful changes detected, return: {"changes": []}
+Respond ONLY with valid JSON."""
+
+SUMMARIZE_WITH_WEDGE_SYSTEM = """You are a competitive intelligence analyst. Write an executive summary of competitive intelligence findings in two clearly labeled sections:
+
+**Landscape Overview** (2-3 sentences): Summarize the most strategically important findings from radar and monitor scans. Focus on what's happening in the market.
+
+**Competitive Wedge Analysis** (2-3 sentences): Analyze how these findings affect the company's competitive wedge and ICP. Are competitors moving into their space? Is their differentiation holding up? Any threats to positioning or opportunities to exploit?
+
+Be concise and actionable."""
+
+SUMMARIZE_BASIC_SYSTEM = """You are a competitive intelligence analyst. Write a brief executive summary (2-4 sentences) of competitive intelligence findings. Focus on the most strategically important findings. Be concise and actionable."""
+
+
+def _cached_system(text: str) -> list[dict]:
+    """Build a system message block with cache_control."""
+    return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
+
 
 class AnthropicAnalyzer(LLMAnalyzer):
     """Uses Claude (without web_search) for structured analysis of search results."""
@@ -35,34 +116,18 @@ class AnthropicAnalyzer(LLMAnalyzer):
         icp_signals: list[str],
     ) -> Signal:
         icp_str = "\n".join(f"- {s}" for s in icp_signals)
-        prompt = f"""Score this company against our market definition. Respond ONLY with valid JSON, no other text.
-
-Our company: {company_description}
+        prompt = f"""Our company: {company_description}
 Our market: {market_definition}
 Our ICP signals:
 {icp_str}
 
 Discovered company information:
-{json.dumps(company_info, indent=2)}
-
-Return JSON with this exact structure:
-{{
-  "name": "company name",
-  "website": "company website or null",
-  "description": "what they do",
-  "funding_status": "funding info or null",
-  "founding_date": "date or null",
-  "location": "location or null",
-  "relevance_score": 0-100,
-  "threat_level": "high" or "medium" or "low",
-  "reasoning": "why this score",
-  "icp_overlap": "how their customers overlap with ours",
-  "key_differentiators": "what makes them different from us"
-}}"""
+{json.dumps(company_info, indent=2)}"""
 
         response = self.client.messages.create(
             model=self.model,
             max_tokens=1024,
+            system=_cached_system(SCORE_RELEVANCE_SYSTEM),
             messages=[{"role": "user", "content": prompt}],
         )
 
@@ -95,37 +160,19 @@ Return JSON with this exact structure:
         icp_str = "\n".join(f"- {s}" for s in icp_signals)
         neg_str = ", ".join(negative_keywords) if negative_keywords else "none"
 
-        prompt = f"""You are a competitive intelligence analyst. Analyze the following search results and extract individual companies, then score each one.
-
-Our company: {company_description}
+        prompt = f"""Our company: {company_description}
 Our market: {market_definition}
 Our ICP signals:
 {icp_str}
 Exclude companies matching: {neg_str}
 
 Search results:
-{raw_response}
-
-For each distinct company found (exclude our own company), return a JSON array. Each element should have:
-{{
-  "name": "company name",
-  "website": "company website or null",
-  "description": "what they do",
-  "funding_status": "funding info or null",
-  "founding_date": "date or null",
-  "location": "location or null",
-  "relevance_score": 0-100,
-  "threat_level": "high" or "medium" or "low",
-  "reasoning": "why this score",
-  "icp_overlap": "how their customers overlap with ours",
-  "key_differentiators": "what makes them different from us"
-}}
-
-Respond ONLY with the JSON array, no other text."""
+{raw_response}"""
 
         response = self.client.messages.create(
             model=self.model,
             max_tokens=4096,
+            system=_cached_system(SCORE_BATCH_SYSTEM),
             messages=[{"role": "user", "content": prompt}],
         )
 
@@ -168,14 +215,14 @@ Respond ONLY with the JSON array, no other text."""
 The following source URLs were found during research. For each section, include a "source_urls" field listing the 1-3 most relevant URLs from this list:
 {urls_list}"""
 
-        prompt = f"""Extract structured information from this competitive intelligence about {competitor_name}.
+        prompt = f"""Company: {competitor_name}
 
 Raw intelligence:
 {raw_intel}
 
 Organize into these sections: {sections_str}{urls_context}
 
-Return ONLY valid JSON with this structure:
+Return JSON with this structure:
 {{
   "pricing": "pricing summary string",
   "pricing_source_urls": ["url1", "url2"],
@@ -189,11 +236,12 @@ Return ONLY valid JSON with this structure:
   "messaging_source_urls": ["url1"]
 }}
 
-Only include sections that have information. For "jobs", use an array of strings. For all others, use a summary string. The *_source_urls fields are optional — only include them if source URLs are available."""
+Only include sections that have information."""
 
         response = self.client.messages.create(
             model=self.model,
             max_tokens=2048,
+            system=_cached_system(STRUCTURE_INTEL_SYSTEM),
             messages=[{"role": "user", "content": prompt}],
         )
 
@@ -208,39 +256,18 @@ Only include sections that have information. For "jobs", use an array of strings
         prev_date: str,
         curr_date: str,
     ) -> list[Change]:
-        prompt = f"""Compare these two snapshots of {competitor_name}'s public presence. Respond ONLY with valid JSON.
+        prompt = f"""Company: {competitor_name}
 
 Previous ({prev_date}):
 {json.dumps(previous_snapshot, indent=2)}
 
 Current ({curr_date}):
-{json.dumps(current_snapshot, indent=2)}
-
-Identify MEANINGFUL changes only. Ignore cosmetic rewording or minor phrasing differences.
-Categories to check: pricing_changes, feature_changes, hiring_signals, funding_news, messaging_shifts
-
-The current snapshot may contain *_source_urls fields with URLs where the information was found. Include 1-3 of the most relevant source URLs per change.
-
-Return a JSON object:
-{{
-  "changes": [
-    {{
-      "category": "pricing_changes|feature_changes|hiring_signals|funding_news|messaging_shifts",
-      "summary": "brief description of change",
-      "previous_value": "what it was before",
-      "current_value": "what it is now",
-      "impact_assessment": "what this change might mean strategically",
-      "severity": "high|medium|low",
-      "source_urls": ["url1", "url2"]
-    }}
-  ]
-}}
-
-If no meaningful changes detected, return: {{"changes": []}}"""
+{json.dumps(current_snapshot, indent=2)}"""
 
         response = self.client.messages.create(
             model=self.model,
             max_tokens=2048,
+            system=_cached_system(ANALYZE_DIFF_SYSTEM),
             messages=[{"role": "user", "content": prompt}],
         )
 
@@ -286,9 +313,8 @@ If no meaningful changes detected, return: {{"changes": []}}"""
             if icp_signals:
                 icp_str = "\n\nICP overlap signals:\n" + "\n".join(f"- {s}" for s in icp_signals)
 
-            prompt = f"""Write an executive summary of these competitive intelligence findings in two sections.
-
-Our company: {company_description}
+            system = SUMMARIZE_WITH_WEDGE_SYSTEM
+            prompt = f"""Our company: {company_description}
 
 Our competitive wedge / ICP:
 {competitive_wedge}{icp_str}
@@ -297,33 +323,23 @@ Radar findings (new potential competitors):
 {json.dumps(radar_data, indent=2)}
 
 Monitor findings (changes at known competitors):
-{json.dumps(monitor_data, indent=2)}
-
-Write TWO clearly labeled sections:
-
-**Landscape Overview** (2-3 sentences): Summarize the most strategically important findings from radar and monitor scans. Focus on what's happening in the market.
-
-**Competitive Wedge Analysis** (2-3 sentences): Analyze how these findings affect our competitive wedge and ICP. Are competitors moving into our space? Is our differentiation holding up? Any threats to our positioning or opportunities to exploit?
-
-Be concise and actionable."""
+{json.dumps(monitor_data, indent=2)}"""
             max_tokens = 1024
         else:
-            prompt = f"""Write a brief executive summary (2-4 sentences) of these competitive intelligence findings.
-
-Our company: {company_description}
+            system = SUMMARIZE_BASIC_SYSTEM
+            prompt = f"""Our company: {company_description}
 
 Radar findings (new potential competitors):
 {json.dumps(radar_data, indent=2)}
 
 Monitor findings (changes at known competitors):
-{json.dumps(monitor_data, indent=2)}
-
-Focus on the most strategically important findings. Be concise and actionable."""
+{json.dumps(monitor_data, indent=2)}"""
             max_tokens = 512
 
         response = self.client.messages.create(
             model=self.model,
             max_tokens=max_tokens,
+            system=_cached_system(system),
             messages=[{"role": "user", "content": prompt}],
         )
 

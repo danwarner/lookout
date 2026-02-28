@@ -6,22 +6,11 @@ import anthropic
 
 from lookout.interfaces.search_provider import SearchProvider
 
+# Static system prompts — cached across calls to reduce input token costs.
 
-class AnthropicSearcher(SearchProvider):
-    """Uses Claude with web_search tool to discover and gather competitive intelligence."""
+SEARCH_MARKET_SYSTEM = """You are a competitive intelligence analyst. Search for companies in a given market using the provided keywords.
 
-    def __init__(self, api_key: str, model: str = "claude-sonnet-4-20250514"):
-        self.client = anthropic.Anthropic(api_key=api_key)
-        self.model = model
-
-    def search_market(self, keywords: list[str], market_definition: str, max_searches: int = 10) -> list[dict]:
-        keywords_str = ", ".join(keywords)
-        prompt = f"""You are a competitive intelligence analyst. Search for companies in this market:
-
-Market definition: {market_definition}
-
-Search for companies using these keywords: {keywords_str}
-Combine them with terms like "funding", "launch", "startup", "seed round", "new product", "series A", "2025", "2026".
+Combine keywords with terms like "funding", "launch", "startup", "seed round", "new product", "series A", "2025", "2026".
 
 Run multiple searches to cast a wide net. For each company you find, extract:
 - name
@@ -35,9 +24,40 @@ Focus on companies founded or funded in the last 18 months.
 
 After searching, compile your findings into a single response listing all discovered companies with the details above. Format each company as a clear block of information."""
 
+GATHER_INTEL_SYSTEM = """You are a competitive intelligence analyst. Research a company and gather current information across the requested categories.
+
+For each category, gather the most up-to-date information you can find:
+- **pricing**: Current pricing tiers, plans, and any recent changes
+- **features**: Key product features, recent launches or updates
+- **jobs**: Notable open positions, hiring trends, team growth signals
+- **funding**: Funding rounds, investors, valuation if known
+- **messaging**: Current tagline, positioning, key marketing messages
+
+After searching, provide a structured summary with a section for each category. Be specific and factual — include numbers, dates, and names where available. For each key finding, note the source URL where you found the information."""
+
+
+def _cached_system(text: str) -> list[dict]:
+    """Build a system message block with cache_control."""
+    return [{"type": "text", "text": text, "cache_control": {"type": "ephemeral"}}]
+
+
+class AnthropicSearcher(SearchProvider):
+    """Uses Claude with web_search tool to discover and gather competitive intelligence."""
+
+    def __init__(self, api_key: str, model: str = "claude-sonnet-4-20250514"):
+        self.client = anthropic.Anthropic(api_key=api_key)
+        self.model = model
+
+    def search_market(self, keywords: list[str], market_definition: str, max_searches: int = 10) -> list[dict]:
+        keywords_str = ", ".join(keywords)
+        prompt = f"""Market definition: {market_definition}
+
+Search for companies using these keywords: {keywords_str}"""
+
         response = self.client.messages.create(
             model=self.model,
             max_tokens=4096,
+            system=_cached_system(SEARCH_MARKET_SYSTEM),
             tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": max_searches}],
             messages=[{"role": "user", "content": prompt}],
         )
@@ -54,22 +74,14 @@ After searching, compile your findings into a single response listing all discov
         self, competitor_name: str, website: str, track_sections: list[str], max_searches: int = 5
     ) -> dict[str, str | list[str]]:
         sections_str = ", ".join(track_sections)
-        prompt = f"""You are a competitive intelligence analyst. Research the company "{competitor_name}" ({website}).
+        prompt = f"""Research the company "{competitor_name}" ({website}).
 
-Search for current information about this company across these categories: {sections_str}
-
-For each category, gather the most up-to-date information you can find:
-- **pricing**: Current pricing tiers, plans, and any recent changes
-- **features**: Key product features, recent launches or updates
-- **jobs**: Notable open positions, hiring trends, team growth signals
-- **funding**: Funding rounds, investors, valuation if known
-- **messaging**: Current tagline, positioning, key marketing messages
-
-After searching, provide a structured summary with a section for each category. Be specific and factual — include numbers, dates, and names where available. For each key finding, note the source URL where you found the information."""
+Gather current information across these categories: {sections_str}"""
 
         response = self.client.messages.create(
             model=self.model,
             max_tokens=4096,
+            system=_cached_system(GATHER_INTEL_SYSTEM),
             tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": max_searches}],
             messages=[{"role": "user", "content": prompt}],
         )

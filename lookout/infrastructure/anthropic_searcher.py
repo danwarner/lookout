@@ -6,13 +6,25 @@ import anthropic
 
 from lookout.interfaces.search_provider import SearchProvider
 
-# Static system prompts — cached across calls to reduce input token costs.
+# Single comprehensive system prompt (>1024 tokens) so it qualifies for prompt caching.
+# Both searcher methods share this cached prefix.
 
-SEARCH_MARKET_SYSTEM = """You are a competitive intelligence analyst. Search for companies in a given market using the provided keywords.
+SEARCHER_SYSTEM = """You are a competitive intelligence analyst with expertise in market research, competitive analysis, and startup ecosystems. You use web search to gather current, factual information about companies and markets.
 
-Combine keywords with terms like "funding", "launch", "startup", "seed round", "new product", "series A", "2025", "2026".
+## Task: search_market
 
-Run multiple searches to cast a wide net. For each company you find, extract:
+Search for companies in a given market using the provided keywords. Your goal is to discover companies the user may not know about — especially recent entrants, newly funded startups, and companies that have pivoted into the space.
+
+Strategy:
+- Combine the provided keywords with terms like "funding", "launch", "startup", "seed round", "new product", "series A", "2024", "2025", "2026"
+- Search for funding announcements, press releases, and product launches
+- Check startup databases, tech news sites, and industry publications
+- Cast a wide net — run multiple diverse searches rather than variations of the same query
+- Look for companies across different geographies (US, Canada, Europe, etc.)
+
+Focus on companies founded or funded in the last 18 months.
+
+For each company you find, extract:
 - name
 - website
 - description (what they do)
@@ -20,20 +32,21 @@ Run multiple searches to cast a wide net. For each company you find, extract:
 - founding_date (if available)
 - location (if available)
 
-Focus on companies founded or funded in the last 18 months.
+After searching, compile your findings into a single response listing all discovered companies with the details above. Format each company as a clear block of information.
 
-After searching, compile your findings into a single response listing all discovered companies with the details above. Format each company as a clear block of information."""
+## Task: gather_competitor_intel
 
-GATHER_INTEL_SYSTEM = """You are a competitive intelligence analyst. Research a company and gather current information across the requested categories.
+Research a specific company and gather current information across requested categories:
 
-For each category, gather the most up-to-date information you can find:
-- **pricing**: Current pricing tiers, plans, and any recent changes
-- **features**: Key product features, recent launches or updates
-- **jobs**: Notable open positions, hiring trends, team growth signals
-- **funding**: Funding rounds, investors, valuation if known
-- **messaging**: Current tagline, positioning, key marketing messages
+- **pricing**: Current pricing tiers, plans, and any recent changes. Look for pricing pages, comparison articles, and recent announcements.
+- **features**: Key product features, recent launches or updates. Check product pages, changelogs, blog posts, and review sites.
+- **jobs**: Notable open positions, hiring trends, team growth signals. Check careers pages and job boards.
+- **funding**: Funding rounds, investors, valuation if known. Check Crunchbase, press releases, and news articles.
+- **messaging**: Current tagline, positioning, key marketing messages. Check homepage, about page, and recent marketing content.
 
-After searching, provide a structured summary with a section for each category. Be specific and factual — include numbers, dates, and names where available. For each key finding, note the source URL where you found the information."""
+Be specific and factual — include numbers, dates, and names where available. For each key finding, note the source URL where you found the information.
+
+Provide a structured summary with a section for each requested category."""
 
 
 def _cached_system(text: str) -> list[dict]:
@@ -47,17 +60,20 @@ class AnthropicSearcher(SearchProvider):
     def __init__(self, api_key: str, model: str = "claude-sonnet-4-20250514"):
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = model
+        self._system = _cached_system(SEARCHER_SYSTEM)
 
     def search_market(self, keywords: list[str], market_definition: str, max_searches: int = 10) -> list[dict]:
         keywords_str = ", ".join(keywords)
-        prompt = f"""Market definition: {market_definition}
+        prompt = f"""Task: search_market
+
+Market definition: {market_definition}
 
 Search for companies using these keywords: {keywords_str}"""
 
         response = self.client.messages.create(
             model=self.model,
             max_tokens=4096,
-            system=_cached_system(SEARCH_MARKET_SYSTEM),
+            system=self._system,
             tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": max_searches}],
             messages=[{"role": "user", "content": prompt}],
         )
@@ -74,14 +90,16 @@ Search for companies using these keywords: {keywords_str}"""
         self, competitor_name: str, website: str, track_sections: list[str], max_searches: int = 5
     ) -> dict[str, str | list[str]]:
         sections_str = ", ".join(track_sections)
-        prompt = f"""Research the company "{competitor_name}" ({website}).
+        prompt = f"""Task: gather_competitor_intel
+
+Research the company "{competitor_name}" ({website}).
 
 Gather current information across these categories: {sections_str}"""
 
         response = self.client.messages.create(
             model=self.model,
             max_tokens=4096,
-            system=_cached_system(GATHER_INTEL_SYSTEM),
+            system=self._system,
             tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": max_searches}],
             messages=[{"role": "user", "content": prompt}],
         )

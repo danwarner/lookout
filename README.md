@@ -16,6 +16,8 @@ Lookout would have caught Mave AI 15 months earlier. The [example config](config
 
 ![Lookout scan output](lookout.png)
 
+![Lookout email radar report](lookout-radar-email.png)
+
 ## How it works
 
 Lookout uses Claude's web search as its sole data source. No scraping, no browser automation — just Claude searching the web and analyzing what it finds.

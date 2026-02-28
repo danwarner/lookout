@@ -49,6 +49,9 @@ market:
     - "real estate listing marketing"
     - "brokerage marketing platform"
     - "real estate agent tools AI"
+    - "AI assistant real estate agents brokers"
+    - "proptech AI startup funding"
+    - "real estate AI startup seed funding 2024 2025"
   secondary_keywords:
     - "MLS listing content"
     - "real estate brand management"
@@ -133,7 +136,7 @@ email:
   subject_prefix: "[Lookout]"
 
 radar:
-  max_searches: 10
+  max_searches: 20
   relevance_threshold: 40
 
 monitor:

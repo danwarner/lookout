@@ -1,0 +1,140 @@
+# Lookout Configuration — VestaList (Example)
+#
+# This is the config that would have caught Mave AI in October 2024 —
+# 15 months before the founders of VestaList found out about them
+# from a friend's casual Slack message.
+#
+# VestaList was a real estate marketing platform that helped agents
+# turn listings into branded content across all platforms. It shut down
+# after discovering a well-funded competitor (Mave AI) had been operating
+# in the same space with significant traction and $7M in total funding.
+#
+# Every signal was public. Nobody was looking.
+# That's why Lookout exists.
+
+company:
+  name: "VestaList"
+  description: >
+    Real estate marketing platform that helps agents and brokerages
+    turn listings into branded social media content, email campaigns,
+    and marketing materials. AI-powered content generation for
+    real estate professionals.
+  website: "https://vestalist.com"
+  competitive_wedge: >
+    VestaList wins the solo agent or small team at a mid-size brokerage
+    who spends hours every week creating listing marketing content
+    manually — social posts, email campaigns, property flyers — using
+    Canva templates and copy-paste from MLS.
+
+    Our wedge: (1) AI generates a full month of on-brand content across
+    all platforms from a single listing URL, (2) no design or copy skills
+    needed — the agent just approves and publishes, and (3) brokerage-level
+    brand control so managing brokers can enforce templates, logos, and
+    compliance across all their agents without policing every post.
+
+    Generic tools like Canva require manual effort per piece. CRM platforms
+    like Lofty bundle marketing as a feature, not a focus. We are
+    listing-in, content-out — purpose-built for the agent who wants to
+    market more but has zero time.
+
+market:
+  definition: >
+    AI-powered marketing, content creation, and workflow automation
+    tools built specifically for real estate agents and brokerages.
+  primary_keywords:
+    - "real estate AI marketing"
+    - "real estate content creation"
+    - "real estate social media automation"
+    - "AI assistant for realtors"
+    - "real estate listing marketing"
+    - "brokerage marketing platform"
+    - "real estate agent tools AI"
+  secondary_keywords:
+    - "MLS listing content"
+    - "real estate brand management"
+    - "agent marketing automation"
+    - "brokerage operations platform"
+    - "real estate workflow automation"
+  negative_keywords:
+    - "real estate CRM"
+    - "property management software"
+    - "mortgage lending platform"
+    - "home search portal"
+    - "real estate photography"
+  icp_overlap_signals:
+    - "Targets individual real estate agents"
+    - "Serves brokerages with 10-500 agents"
+    - "Generates social media content from listings"
+    - "AI-powered content or marketing automation"
+    - "Integrates with MLS or IDX data"
+    - "Offers branded templates for agents"
+
+competitors:
+  # These are the competitors VestaList knew about.
+  # Mave AI was NOT on this list — that's the point.
+  # Lookout's radar would have found them.
+
+  - name: "Coffee & Contracts"
+    website: "https://coffeeandcontracts.com"
+    track:
+      - pricing
+      - features
+      - messaging
+
+  - name: "Canva (Real Estate Templates)"
+    website: "https://www.canva.com/real-estate"
+    track:
+      - features
+      - messaging
+
+  - name: "Lofty (formerly Chime)"
+    website: "https://www.lofty.com"
+    track:
+      - pricing
+      - features
+      - funding
+      - messaging
+
+  - name: "Luxury Presence"
+    website: "https://www.luxurypresence.com"
+    track:
+      - pricing
+      - features
+      - funding
+      - jobs
+      - messaging
+
+# What Lookout's radar would have found in October 2024:
+#
+#   🔴 RADAR ALERT — New Entrant
+#
+#   Mave AI (maveai.co) — Relevance: 95%
+#   Founded: 2023 | Location: Toronto, Canada
+#   "AI assistant for real estate agents and brokers"
+#   Funding: $2M CAD pre-seed (Oct 2024, Relay Ventures + N49P)
+#   6,000+ agents interested, 90+ brokerages in GTA
+#   60% of beta agents using platform 6x/week
+#
+#   Why it matters: Near-identical ICP. AI-powered content and
+#   marketing automation for agents. Brokerage-level distribution.
+#   Already has traction we don't.
+#
+#   ⚠️ DECISION REQUIRED
+#   Competitor with funded team, 6,000 interested agents, and
+#   brokerage partnerships detected. Evaluate: accelerate, pivot,
+#   or reposition. Deadline: 2 weeks.
+#
+#   Sources: BusinessWire, Crunchbase, Built In Toronto,
+#   Fintech.ca, Yahoo Finance
+
+email:
+  to: "founders@vestalist.com"
+  from: "lookout@vestalist.com"
+  subject_prefix: "[Lookout]"
+
+radar:
+  max_searches: 10
+  relevance_threshold: 40
+
+monitor:
+  max_searches_per_competitor: 5

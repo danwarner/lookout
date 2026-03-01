@@ -44,6 +44,37 @@ class Signal:
     icp_overlap: str = ""
     key_differentiators: str = ""
 
+    def to_dict(self) -> dict:
+        return {
+            "name": self.name,
+            "website": self.website,
+            "description": self.description,
+            "funding_status": self.funding_status,
+            "founding_date": self.founding_date,
+            "location": self.location,
+            "relevance_score": self.relevance_score,
+            "threat_level": self.threat_level.value,
+            "reasoning": self.reasoning,
+            "icp_overlap": self.icp_overlap,
+            "key_differentiators": self.key_differentiators,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Signal:
+        return cls(
+            name=data["name"],
+            website=data.get("website"),
+            description=data["description"],
+            funding_status=data.get("funding_status"),
+            founding_date=data.get("founding_date"),
+            location=data.get("location"),
+            relevance_score=data.get("relevance_score", 0),
+            threat_level=ThreatLevel(data.get("threat_level", "low")),
+            reasoning=data.get("reasoning", ""),
+            icp_overlap=data.get("icp_overlap", ""),
+            key_differentiators=data.get("key_differentiators", ""),
+        )
+
 
 @dataclass
 class Change:
@@ -57,6 +88,29 @@ class Change:
     severity: ChangeSeverity = ChangeSeverity.LOW
     source_urls: list[str] = field(default_factory=list)
 
+    def to_dict(self) -> dict:
+        return {
+            "category": self.category,
+            "summary": self.summary,
+            "previous_value": self.previous_value,
+            "current_value": self.current_value,
+            "impact_assessment": self.impact_assessment,
+            "severity": self.severity.value,
+            "source_urls": self.source_urls,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Change:
+        return cls(
+            category=data["category"],
+            summary=data["summary"],
+            previous_value=data.get("previous_value"),
+            current_value=data.get("current_value"),
+            impact_assessment=data.get("impact_assessment", ""),
+            severity=ChangeSeverity(data.get("severity", "low")),
+            source_urls=data.get("source_urls", []),
+        )
+
 
 @dataclass
 class Diff:
@@ -68,6 +122,19 @@ class Diff:
     @property
     def has_changes(self) -> bool:
         return len(self.changes) > 0
+
+    def to_dict(self) -> dict:
+        return {
+            "competitor_name": self.competitor_name,
+            "changes": [c.to_dict() for c in self.changes],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Diff:
+        return cls(
+            competitor_name=data["competitor_name"],
+            changes=[Change.from_dict(c) for c in data.get("changes", [])],
+        )
 
 
 @dataclass
@@ -87,3 +154,20 @@ class ScanResult:
     radar_signals: list[Signal] = field(default_factory=list)
     monitor_diffs: list[Diff] = field(default_factory=list)
     summary: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "timestamp": self.timestamp,
+            "radar_signals": [s.to_dict() for s in self.radar_signals],
+            "monitor_diffs": [d.to_dict() for d in self.monitor_diffs],
+            "summary": self.summary,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> ScanResult:
+        return cls(
+            timestamp=data["timestamp"],
+            radar_signals=[Signal.from_dict(s) for s in data.get("radar_signals", [])],
+            monitor_diffs=[Diff.from_dict(d) for d in data.get("monitor_diffs", [])],
+            summary=data.get("summary", ""),
+        )

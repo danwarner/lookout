@@ -16,11 +16,13 @@ from lookout.domain.entities import Competitor, ThreatLevel
 from lookout.infrastructure.anthropic_analyzer import AnthropicAnalyzer
 from lookout.infrastructure.anthropic_searcher import AnthropicSearcher
 from lookout.infrastructure.config_loader import load_config
+from lookout.infrastructure.file_report_store import FileReportStore
 from lookout.infrastructure.file_snapshot_store import FileSnapshotStore
 from lookout.infrastructure.resend_sender import ResendSender
 from lookout.use_cases.compile_digest import build_html_digest, compile_digest
 from lookout.use_cases.monitor_scan import run_monitor_scan, run_single_monitor
 from lookout.use_cases.radar_scan import run_radar_scan
+from lookout.use_cases.report_diff import diff_reports
 
 console = Console()
 
@@ -108,6 +110,11 @@ def scan(config: str, email: str | None, no_email: bool):
         )
 
     scan_result, html = compile_digest(radar_signals, monitor_diffs, summary, cfg.company.name)
+
+    # Save report
+    report_store = FileReportStore()
+    report_store.save(scan_result, html, cfg.company.name)
+    console.print("[dim]Report saved to reports/[/dim]")
 
     # Display results
     _display_results(scan_result)
@@ -296,6 +303,12 @@ def report(config: str, email: str | None):
         )
 
     scan_result, html = compile_digest(radar_signals, monitor_diffs, summary, cfg.company.name)
+
+    # Save report
+    report_store = FileReportStore()
+    report_store.save(scan_result, html, cfg.company.name)
+    console.print("[dim]Report saved to reports/[/dim]")
+
     _display_results(scan_result)
 
     if email:
@@ -341,6 +354,128 @@ def add(config: str, name: str, website: str, track: tuple[str]):
 
     console.print(f"[green]Added {name} ({website}) to the watch list.[/green]")
     console.print(f"  Tracking: {', '.join(track)}")
+
+
+@cli.group()
+def history():
+    """View and compare past scan reports."""
+    pass
+
+
+@history.command("list")
+@click.option("--config", "-c", required=True, type=click.Path(exists=True), help="Path to YAML config file")
+def history_list(config: str):
+    """List past reports for your company."""
+    cfg = load_config(config)
+    report_store = FileReportStore()
+    reports = report_store.list_reports(cfg.company.name)
+
+    if not reports:
+        console.print("[yellow]No saved reports found.[/yellow]")
+        return
+
+    table = Table(title=f"Report History — {cfg.company.name}")
+    table.add_column("#", justify="right", style="dim")
+    table.add_column("Date", style="bold")
+    table.add_column("File", style="dim")
+
+    for i, report in enumerate(reports, 1):
+        table.add_row(str(i), report["timestamp"], report["path"])
+
+    console.print(table)
+
+
+@history.command("show")
+@click.option("--config", "-c", required=True, type=click.Path(exists=True), help="Path to YAML config file")
+@click.option("--html", "open_html", is_flag=True, help="Open the HTML report in a browser")
+@click.argument("date")
+def history_show(config: str, date: str, open_html: bool):
+    """Display a past report. DATE is a date prefix like '2026-02-28'."""
+    cfg = load_config(config)
+    report_store = FileReportStore()
+
+    if open_html:
+        html = report_store.load_html(cfg.company.name, date)
+        if html is None:
+            console.print(f"[red]No report found matching '{date}'.[/red]")
+            return
+        import tempfile
+        import webbrowser
+
+        with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False) as f:
+            f.write(html)
+            webbrowser.open(f"file://{f.name}")
+        console.print(f"[green]Opened report in browser.[/green]")
+    else:
+        scan_result = report_store.load(cfg.company.name, date)
+        if scan_result is None:
+            console.print(f"[red]No report found matching '{date}'.[/red]")
+            return
+        console.print(f"\n[dim]Report from {scan_result.timestamp}[/dim]\n")
+        _display_results(scan_result)
+
+
+@history.command("diff")
+@click.option("--config", "-c", required=True, type=click.Path(exists=True), help="Path to YAML config file")
+@click.argument("date1")
+@click.argument("date2")
+def history_diff(config: str, date1: str, date2: str):
+    """Compare two reports. DATE1 is the older report, DATE2 is the newer."""
+    cfg = load_config(config)
+    report_store = FileReportStore()
+
+    older = report_store.load(cfg.company.name, date1)
+    if older is None:
+        console.print(f"[red]No report found matching '{date1}'.[/red]")
+        return
+
+    newer = report_store.load(cfg.company.name, date2)
+    if newer is None:
+        console.print(f"[red]No report found matching '{date2}'.[/red]")
+        return
+
+    rd = diff_reports(older, newer)
+
+    if not rd.has_differences:
+        console.print("[green]No differences between the two reports.[/green]")
+        return
+
+    console.print(Panel(
+        f"[bold]Report Diff[/bold]\n"
+        f"[dim]Older:[/dim] {rd.older_timestamp}\n"
+        f"[dim]Newer:[/dim] {rd.newer_timestamp}",
+        style="bold",
+    ))
+
+    if rd.new_signals:
+        console.print(f"\n[green bold]New Radar Signals ({len(rd.new_signals)}):[/green bold]")
+        for name in rd.new_signals:
+            console.print(f"  [green]+[/green] {name}")
+
+    if rd.removed_signals:
+        console.print(f"\n[red bold]Removed Radar Signals ({len(rd.removed_signals)}):[/red bold]")
+        for name in rd.removed_signals:
+            console.print(f"  [red]-[/red] {name}")
+
+    if rd.signal_changes:
+        console.print(f"\n[yellow bold]Signal Changes ({len(rd.signal_changes)}):[/yellow bold]")
+        for sc in rd.signal_changes:
+            parts = []
+            if sc.old_score != sc.new_score:
+                parts.append(f"score {sc.old_score} → {sc.new_score}")
+            if sc.old_threat != sc.new_threat:
+                parts.append(f"threat {sc.old_threat} → {sc.new_threat}")
+            console.print(f"  [yellow]~[/yellow] {sc.name}: {', '.join(parts)}")
+
+    if rd.new_monitor_changes:
+        console.print(f"\n[green bold]New Monitor Changes ({len(rd.new_monitor_changes)}):[/green bold]")
+        for mc in rd.new_monitor_changes:
+            console.print(f"  [green]+[/green] {mc.competitor}: {mc.summary}")
+
+    if rd.resolved_monitor_changes:
+        console.print(f"\n[dim]Resolved Monitor Changes ({len(rd.resolved_monitor_changes)}):[/dim]")
+        for mc in rd.resolved_monitor_changes:
+            console.print(f"  [dim]-[/dim] {mc.competitor}: {mc.summary}")
 
 
 def _display_results(scan_result):

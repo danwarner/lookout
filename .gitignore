@@ -27,5 +27,8 @@ config/*.yaml
 # Snapshots (user data)
 snapshots/*.json
 
+# Reports (user data)
+reports/
+
 # OS
 .DS_Store

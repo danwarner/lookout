@@ -28,6 +28,10 @@ Lookout uses Claude's web search as its sole data source. No scraping, no browse
 
 **Digest** — Combines everything into an HTML email with an executive summary, competitive wedge analysis (how findings affect your positioning), threat assessments, and change alerts with clickable sources.
 
+**Historical context** — On repeat scans, Lookout loads the previous report, diffs it against the current one, and injects the changes into the summary prompt. The executive summary narrates what changed — new entrants, departures, score movements, and resolved issues.
+
+**Auto-track** — When radar discovers competitors at MEDIUM or HIGH threat level, they're automatically added to your YAML config and monitored in the same run. No manual `add` step needed.
+
 ## Quick start
 
 ```bash
@@ -76,6 +80,14 @@ uv run lookout monitor -c config/mycompany.yaml --competitor "Acme"
 
 # Add a new competitor to your watch list
 uv run lookout add -c config/mycompany.yaml "NewCo" "https://newco.com"
+
+# Generate a report (terminal only, optional --email)
+uv run lookout report -c config/mycompany.yaml
+
+# View past reports
+uv run lookout history list -c config/mycompany.yaml
+uv run lookout history show -c config/mycompany.yaml 2026-02-28
+uv run lookout history diff -c config/mycompany.yaml 2026-02-27 2026-02-28
 ```
 
 ## Config

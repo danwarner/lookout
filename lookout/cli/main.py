@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
 
+import anthropic
 import click
+import yaml
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.panel import Panel
+from rich.syntax import Syntax
 from rich.table import Table
 
 from lookout.domain.entities import Competitor, ThreatLevel
@@ -28,6 +32,79 @@ console = Console()
 
 # Load .env from current directory or project root
 load_dotenv()
+
+# ── Init command: system prompt and helpers ──────────────────────────────────
+
+INIT_SYSTEM = """You are a competitive intelligence strategist. A founder is setting up automated competitor monitoring. Given their raw inputs about their company, produce structured JSON that will power ongoing scans.
+
+Return ONLY valid JSON with these keys:
+
+{
+  "description": "Polished 3-5 sentence company description. Clarify the product category, delivery model (SaaS, API, marketplace, etc.), and core value proposition. Write in third person.",
+  "market_definition": "Precise 1-2 sentence market definition suitable for search queries. Name the category and buyer segment.",
+  "competitive_wedge": "2-3 paragraph strategic analysis of why this company wins deals. Cover: (1) the specific pain point and buyer persona, (2) how the product solves it differently from alternatives, (3) what moats or advantages sustain differentiation. Write for an analyst, not a pitch deck.",
+  "primary_keywords": ["8-12 search terms an analyst would use to find competitors. Mix branded categories, generic terms, and long-tail queries. Include funding/startup variants."],
+  "negative_keywords": ["5-8 terms that would pull in irrelevant results. Think adjacent categories that share words but serve different markets."],
+  "icp_overlap_signals": ["6-10 concrete, observable signals that a competitor targets the same ideal customer. e.g. 'Targets companies with 50-200 employees', 'Integrates with Slack and Teams', 'Offers per-seat pricing under $20/mo'."]
+}
+
+Be specific and actionable. Prefer concrete details over vague marketing language. Keywords should be things a human would actually type into a search engine."""
+
+
+def _refine_with_claude(api_key: str, company_name: str, website: str,
+                        description: str, customers: str,
+                        competitors: list[dict]) -> dict:
+    """Call Claude to refine raw founder inputs into structured config fields."""
+    comp_str = "\n".join(f"- {c['name']} ({c['website']})" for c in competitors) if competitors else "None provided"
+
+    prompt = f"""Company: {company_name}
+Website: {website}
+What they do: {description}
+Typical customers: {customers}
+Known competitors:
+{comp_str}"""
+
+    client = anthropic.Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2048,
+        system=[{"type": "text", "text": INIT_SYSTEM, "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    text = response.content[0].text.strip()
+    # Strip markdown fences if present
+    if text.startswith("```"):
+        lines = text.split("\n")
+        lines = [line for line in lines[1:] if line.strip() != "```"]
+        text = "\n".join(lines)
+    return json.loads(text)
+
+
+def _review_field(label: str, value: str | list, is_list: bool = False) -> str | list | None:
+    """Show Claude's suggestion in a Rich Panel and let the user accept, edit, or skip."""
+    display = ", ".join(value) if is_list else value
+    console.print(Panel(display, title=label, style="cyan"))
+
+    choice = click.prompt("  [Enter] Accept / [e] Edit / [s] Skip", default="", show_default=False).strip().lower()
+
+    if choice == "s":
+        return None
+    elif choice == "e":
+        if is_list:
+            edited = click.prompt("  Enter comma-separated values", default=display)
+            return [item.strip() for item in edited.split(",") if item.strip()]
+        else:
+            # For multi-line fields, use click.edit for a better experience
+            if "\n" in display or len(display) > 120:
+                edited = click.edit(text=display)
+                if edited is None:
+                    return value  # user closed editor without saving
+                return edited.strip()
+            else:
+                return click.prompt("  New value", default=display)
+    else:
+        return value
 
 
 def _get_anthropic_key() -> str:
@@ -55,6 +132,146 @@ def cli():
     and receive email digests with actionable intelligence.
     """
     pass
+
+
+@cli.command()
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Output path (default: config/{name}.yaml)")
+def init(output: str | None):
+    """Interactively create a Lookout config file with Claude's help."""
+    console.print(Panel(
+        "[bold]Lookout Config Builder[/bold]\n"
+        "Let's set up competitive intelligence for your company.\n"
+        "I'll ask a few questions and use Claude to help fill in the details.",
+        style="bold cyan",
+    ))
+
+    # Validate API key upfront
+    api_key = _get_anthropic_key()
+
+    # Gather inputs
+    company_name = click.prompt("  Company name")
+    website = click.prompt("  Website")
+    description = click.prompt("  What does your company do? (a sentence or two)")
+    customers = click.prompt("  Who are your typical customers?")
+    competitors_input = click.prompt("  Known competitors (comma-separated, or \"none\")", default="none")
+
+    competitors: list[dict] = []
+    if competitors_input.strip().lower() != "none":
+        for name in competitors_input.split(","):
+            name = name.strip()
+            if name:
+                comp_website = click.prompt(f"    {name} website", default="")
+                competitors.append({"name": name, "website": comp_website})
+
+    # Call Claude
+    console.print()
+    try:
+        with console.status("[bold cyan]Generating config with Claude...[/bold cyan]"):
+            refined = _refine_with_claude(api_key, company_name, website, description, customers, competitors)
+    except json.JSONDecodeError:
+        console.print("[red]Error:[/red] Failed to parse Claude's response as JSON. Please try again.")
+        sys.exit(1)
+    except anthropic.APIError as e:
+        console.print(f"[red]Error:[/red] Claude API call failed: {e}")
+        sys.exit(1)
+
+    console.print()
+
+    # Review each field
+    fields = [
+        ("Company Description", "description", False),
+        ("Market Definition", "market_definition", False),
+        ("Competitive Wedge", "competitive_wedge", False),
+        ("Primary Keywords", "primary_keywords", True),
+        ("Negative Keywords", "negative_keywords", True),
+        ("ICP Overlap Signals", "icp_overlap_signals", True),
+    ]
+
+    final: dict = {}
+    for label, key, is_list in fields:
+        value = refined.get(key, [] if is_list else "")
+        result = _review_field(label, value, is_list=is_list)
+        if result is not None:
+            final[key] = result
+        else:
+            # Skipped — use empty default
+            final[key] = [] if is_list else ""
+
+    # Email config
+    email_config: dict = {}
+    if click.confirm("\n  Set up email digests?", default=False):
+        email_config["to"] = click.prompt("    Recipient email")
+        email_config["from"] = click.prompt("    From address", default=f"lookout@{website.replace('https://', '').replace('http://', '').rstrip('/')}")
+        email_config["subject_prefix"] = click.prompt("    Subject prefix", default="[Lookout]")
+
+    # Build YAML structure
+    config_data: dict = {
+        "company": {
+            "name": company_name,
+            "description": final["description"],
+            "website": website,
+        },
+        "market": {
+            "definition": final["market_definition"],
+            "primary_keywords": final["primary_keywords"],
+            "negative_keywords": final["negative_keywords"],
+            "icp_overlap_signals": final["icp_overlap_signals"],
+        },
+        "competitors": [
+            {
+                "name": c["name"],
+                "website": c["website"],
+                "track": ["pricing", "features", "jobs", "funding", "messaging"],
+            }
+            for c in competitors
+        ],
+    }
+
+    if final["competitive_wedge"]:
+        config_data["company"]["competitive_wedge"] = final["competitive_wedge"]
+
+    if email_config:
+        config_data["email"] = email_config
+    else:
+        config_data["email"] = {"to": "", "from": "", "subject_prefix": "[Lookout]"}
+
+    config_data["radar"] = {"max_searches": 20, "relevance_threshold": 40}
+    config_data["monitor"] = {"max_searches_per_competitor": 5}
+
+    # Preview
+    yaml_str = yaml.dump(config_data, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    console.print()
+    console.print(Panel(
+        Syntax(yaml_str, "yaml", theme="monokai"),
+        title="Final Config Preview",
+        style="bold green",
+    ))
+
+    # Determine output path
+    slug = company_name.lower().replace(" ", "_")
+    output_path = Path(output) if output else Path(f"config/{slug}.yaml")
+
+    # Check for existing file
+    if output_path.exists():
+        if not click.confirm(f"\n  {output_path} already exists. Overwrite?", default=False):
+            console.print("[yellow]Aborted.[/yellow]")
+            return
+
+    if not click.confirm(f"\n  Save to {output_path}?", default=True):
+        console.print("[yellow]Aborted.[/yellow]")
+        return
+
+    # Create parent directory if needed
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, "w") as f:
+        yaml.dump(config_data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+    console.print(f"\n[green]Config saved to {output_path}[/green]")
+    console.print(f"\n  [bold]Next steps:[/bold]")
+    console.print(f"    lookout scan -c {output_path}")
+    console.print(f"    lookout radar -c {output_path}")
 
 
 @cli.command()
@@ -348,8 +565,6 @@ def add(config: str, name: str, website: str, track: tuple[str]):
 
     NAME is the competitor's name, WEBSITE is their URL.
     """
-    import yaml
-
     config_path = Path(config)
     with open(config_path) as f:
         raw = yaml.safe_load(f)
@@ -516,8 +731,6 @@ def _build_historical_context(
 
 def _auto_track_competitors(radar_signals: list, cfg, config_path: str) -> None:
     """Auto-add medium/high-threat radar signals to the YAML config."""
-    import yaml
-
     existing_names = {c.name.lower() for c in cfg.competitors}
     to_add = [
         s for s in radar_signals

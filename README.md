@@ -50,8 +50,15 @@ cp .env.example .env
 Create your config:
 
 ```bash
+uv run lookout init
+```
+
+Answer a few questions about your company and competitors. Claude generates a polished config — company description, market definition, competitive wedge, keywords, and ICP signals. You review each field (accept, edit, or skip) and save the YAML.
+
+Or copy and edit manually:
+
+```bash
 cp config/example.yaml config/mycompany.yaml
-# Edit with your company, market, and competitors
 ```
 
 Try it with the example config (the VestaList case):
@@ -63,6 +70,10 @@ uv run lookout scan -c config/example.yaml --no-email
 All commands:
 
 ```bash
+# Create a new config interactively (Claude-assisted)
+uv run lookout init
+uv run lookout init -o config/custom.yaml
+
 # Full scan — radar + monitor + email digest
 uv run lookout scan -c config/mycompany.yaml
 

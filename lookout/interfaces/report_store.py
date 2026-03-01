@@ -39,3 +39,8 @@ class ReportStore(ABC):
         Returns None if not found.
         """
         ...
+
+    @abstractmethod
+    def load_latest(self, company_name: str) -> ScanResult | None:
+        """Load the most recent report. Returns None if no history."""
+        ...

@@ -45,9 +45,11 @@ class LLMAnalyzer(ABC):
         company_description: str,
         competitive_wedge: str = "",
         icp_signals: list[str] | None = None,
+        historical_changes: str = "",
     ) -> str:
         """Generate a brief executive summary of all findings.
 
         When competitive_wedge is provided, includes a Competitive Wedge Analysis section.
+        When historical_changes is provided, weaves context about what changed since last scan.
         """
         ...

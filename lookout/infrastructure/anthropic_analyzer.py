@@ -90,6 +90,8 @@ If a competitive wedge / ICP is provided, write TWO clearly labeled sections:
 
 If no competitive wedge is provided, write a single brief summary (2-4 sentences) focusing on the most strategically important findings.
 
+If historical changes since the last scan are provided, weave them into your summary — note new entrants, departures, score movements, and resolved/new monitor changes.
+
 Be concise and actionable."""
 
 
@@ -297,6 +299,7 @@ Current ({curr_date}):
         company_description: str,
         competitive_wedge: str = "",
         icp_signals: list[str] | None = None,
+        historical_changes: str = "",
     ) -> str:
         radar_data = [
             {"name": s.name, "relevance_score": s.relevance_score, "threat_level": s.threat_level.value, "description": s.description}
@@ -307,6 +310,8 @@ Current ({curr_date}):
             for d in monitor_diffs
             if d.has_changes
         ]
+
+        historical_section = f"\n\n{historical_changes}" if historical_changes else ""
 
         if competitive_wedge:
             icp_str = ""
@@ -324,7 +329,7 @@ Radar findings (new potential competitors):
 {json.dumps(radar_data, indent=2)}
 
 Monitor findings (changes at known competitors):
-{json.dumps(monitor_data, indent=2)}"""
+{json.dumps(monitor_data, indent=2)}{historical_section}"""
             max_tokens = 1024
         else:
             prompt = f"""Task: summarize_digest
@@ -335,7 +340,7 @@ Radar findings (new potential competitors):
 {json.dumps(radar_data, indent=2)}
 
 Monitor findings (changes at known competitors):
-{json.dumps(monitor_data, indent=2)}"""
+{json.dumps(monitor_data, indent=2)}{historical_section}"""
             max_tokens = 512
 
         response = self.client.messages.create(

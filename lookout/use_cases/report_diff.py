@@ -102,3 +102,39 @@ def diff_reports(older: ScanResult, newer: ScanResult) -> ReportDiff:
         result.resolved_monitor_changes.append(MonitorChange(competitor=comp, summary=summary))
 
     return result
+
+
+def format_diff_for_prompt(diff: ReportDiff) -> str:
+    """Convert a ReportDiff into concise plain text for LLM prompt injection.
+
+    Returns empty string if no differences.
+    """
+    if not diff.has_differences:
+        return ""
+
+    lines = [f"Changes since last scan ({diff.older_timestamp}):"]
+
+    if diff.new_signals:
+        lines.append(f"- New radar signals: {', '.join(diff.new_signals)}")
+
+    if diff.removed_signals:
+        lines.append(f"- No longer detected: {', '.join(diff.removed_signals)}")
+
+    if diff.signal_changes:
+        for sc in diff.signal_changes:
+            parts = []
+            if sc.old_score != sc.new_score:
+                parts.append(f"{sc.old_score}\u2192{sc.new_score}")
+            if sc.old_threat != sc.new_threat:
+                parts.append(f"{sc.old_threat}\u2192{sc.new_threat}")
+            lines.append(f"- Score changes: {sc.name} {' ('.join(parts)})" if len(parts) > 1 else f"- Score changes: {sc.name} {parts[0]}")
+
+    if diff.new_monitor_changes:
+        for mc in diff.new_monitor_changes:
+            lines.append(f"- New monitor changes: {mc.competitor} \u2014 {mc.summary}")
+
+    if diff.resolved_monitor_changes:
+        for mc in diff.resolved_monitor_changes:
+            lines.append(f"- Resolved: {mc.competitor} \u2014 {mc.summary}")
+
+    return "\n".join(lines)

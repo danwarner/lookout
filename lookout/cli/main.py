@@ -22,7 +22,7 @@ from lookout.infrastructure.resend_sender import ResendSender
 from lookout.use_cases.compile_digest import build_html_digest, compile_digest
 from lookout.use_cases.monitor_scan import run_monitor_scan, run_single_monitor
 from lookout.use_cases.radar_scan import run_radar_scan
-from lookout.use_cases.report_diff import diff_reports
+from lookout.use_cases.report_diff import diff_reports, format_diff_for_prompt
 
 console = Console()
 
@@ -69,6 +69,8 @@ def scan(config: str, email: str | None, no_email: bool):
     analyzer = AnthropicAnalyzer(api_key=api_key)
     snapshot_store = FileSnapshotStore()
 
+    report_store = FileReportStore()
+
     # Radar scan
     console.print(Panel("[bold]Phase 1: Radar Scan[/bold] — Discovering unknown competitors...", style="red"))
     with console.status("[bold red]Scanning the market...[/bold red]"):
@@ -85,6 +87,9 @@ def scan(config: str, email: str | None, no_email: bool):
         )
     console.print(f"  Found [bold]{len(radar_signals)}[/bold] potential competitors\n")
 
+    # Auto-track: add medium/high-threat signals to config
+    _auto_track_competitors(radar_signals, cfg, config)
+
     # Monitor scan
     console.print(Panel("[bold]Phase 2: Monitor Scan[/bold] — Checking known competitors...", style="blue"))
     with console.status("[bold blue]Monitoring competitors...[/bold blue]"):
@@ -98,6 +103,9 @@ def scan(config: str, email: str | None, no_email: bool):
     changes_count = sum(len(d.changes) for d in monitor_diffs)
     console.print(f"  Detected [bold]{changes_count}[/bold] change(s) across {len(cfg.competitors)} competitors\n")
 
+    # Historical context
+    historical_changes = _build_historical_context(report_store, cfg.company.name, radar_signals, monitor_diffs)
+
     # Summary
     console.print(Panel("[bold]Phase 3: Compiling Digest[/bold]", style="green"))
     with console.status("[bold green]Generating summary...[/bold green]"):
@@ -107,12 +115,12 @@ def scan(config: str, email: str | None, no_email: bool):
             cfg.company.description,
             competitive_wedge=cfg.company.competitive_wedge,
             icp_signals=cfg.market.icp_overlap_signals,
+            historical_changes=historical_changes,
         )
 
     scan_result, html = compile_digest(radar_signals, monitor_diffs, summary, cfg.company.name)
 
     # Save report
-    report_store = FileReportStore()
     report_store.save(scan_result, html, cfg.company.name)
     console.print("[dim]Report saved to reports/[/dim]")
 
@@ -268,6 +276,7 @@ def report(config: str, email: str | None):
     searcher = AnthropicSearcher(api_key=api_key)
     analyzer = AnthropicAnalyzer(api_key=api_key)
     snapshot_store = FileSnapshotStore()
+    report_store = FileReportStore()
 
     console.print(Panel("[bold]Generating Report...[/bold]", style="green"))
 
@@ -284,6 +293,9 @@ def report(config: str, email: str | None):
             relevance_threshold=cfg.radar.relevance_threshold,
         )
 
+    # Auto-track: add medium/high-threat signals to config
+    _auto_track_competitors(radar_signals, cfg, config)
+
     with console.status("[bold blue]Monitor scan...[/bold blue]"):
         monitor_diffs = run_monitor_scan(
             searcher=searcher,
@@ -293,6 +305,9 @@ def report(config: str, email: str | None):
             max_searches_per_competitor=cfg.monitor.max_searches_per_competitor,
         )
 
+    # Historical context
+    historical_changes = _build_historical_context(report_store, cfg.company.name, radar_signals, monitor_diffs)
+
     with console.status("[bold green]Summarizing...[/bold green]"):
         summary = analyzer.summarize_digest(
             radar_signals,
@@ -300,12 +315,12 @@ def report(config: str, email: str | None):
             cfg.company.description,
             competitive_wedge=cfg.company.competitive_wedge,
             icp_signals=cfg.market.icp_overlap_signals,
+            historical_changes=historical_changes,
         )
 
     scan_result, html = compile_digest(radar_signals, monitor_diffs, summary, cfg.company.name)
 
     # Save report
-    report_store = FileReportStore()
     report_store.save(scan_result, html, cfg.company.name)
     console.print("[dim]Report saved to reports/[/dim]")
 
@@ -476,6 +491,67 @@ def history_diff(config: str, date1: str, date2: str):
         console.print(f"\n[dim]Resolved Monitor Changes ({len(rd.resolved_monitor_changes)}):[/dim]")
         for mc in rd.resolved_monitor_changes:
             console.print(f"  [dim]-[/dim] {mc.competitor}: {mc.summary}")
+
+
+def _build_historical_context(
+    report_store: FileReportStore,
+    company_name: str,
+    radar_signals: list,
+    monitor_diffs: list,
+) -> str:
+    """Load the previous report and compute a diff for prompt injection."""
+    from lookout.domain.entities import ScanResult
+
+    previous = report_store.load_latest(company_name)
+    if previous is None:
+        return ""
+
+    current = ScanResult(
+        radar_signals=radar_signals,
+        monitor_diffs=monitor_diffs,
+    )
+    rd = diff_reports(previous, current)
+    return format_diff_for_prompt(rd)
+
+
+def _auto_track_competitors(radar_signals: list, cfg, config_path: str) -> None:
+    """Auto-add medium/high-threat radar signals to the YAML config."""
+    import yaml
+
+    existing_names = {c.name.lower() for c in cfg.competitors}
+    to_add = [
+        s for s in radar_signals
+        if s.threat_level in (ThreatLevel.MEDIUM, ThreatLevel.HIGH)
+        and s.name.lower() not in existing_names
+    ]
+
+    if not to_add:
+        return
+
+    path = Path(config_path)
+    with open(path) as f:
+        raw = yaml.safe_load(f)
+
+    for signal in to_add:
+        new_competitor = {
+            "name": signal.name,
+            "website": signal.website or "",
+            "track": ["pricing", "features", "jobs", "funding", "messaging"],
+        }
+        raw.setdefault("competitors", []).append(new_competitor)
+
+        # Also add to in-memory config so they get monitored in the same run
+        cfg.competitors.append(
+            Competitor(name=signal.name, website=signal.website or "")
+        )
+
+        console.print(
+            f"  [green]Auto-added[/green] [bold]{signal.name}[/bold] "
+            f"({signal.threat_level.value.upper()} threat) to watch list"
+        )
+
+    with open(path, "w") as f:
+        yaml.dump(raw, f, default_flow_style=False, sort_keys=False)
 
 
 def _display_results(scan_result):

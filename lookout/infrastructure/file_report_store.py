@@ -69,6 +69,15 @@ class FileReportStore(ReportStore):
         with open(path) as f:
             return f.read()
 
+    def load_latest(self, company_name: str) -> ScanResult | None:
+        safe_name = _sanitize_name(company_name)
+        latest_path = self.directory / f"{safe_name}_latest.json"
+        if not latest_path.exists():
+            return None
+        with open(latest_path) as f:
+            data = json.load(f)
+        return ScanResult.from_dict(data)
+
     def _find_report(self, company_name: str, date_prefix: str, ext: str) -> Path | None:
         """Find a report file matching a date prefix."""
         safe_name = _sanitize_name(company_name)

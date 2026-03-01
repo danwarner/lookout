@@ -185,3 +185,29 @@ def test_file_report_store_load_html_not_found():
     with tempfile.TemporaryDirectory() as tmpdir:
         store = FileReportStore(directory=tmpdir)
         assert store.load_html("NonExistent", "2026-01-01") is None
+
+
+# --- load_latest tests ---
+
+
+def test_load_latest_returns_none_when_no_reports():
+    """load_latest returns None when no reports have been saved."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        store = FileReportStore(directory=tmpdir)
+        assert store.load_latest("NonExistent") is None
+
+
+def test_load_latest_returns_most_recent_after_multiple_saves():
+    """load_latest returns the most recently saved report."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        store = FileReportStore(directory=tmpdir)
+
+        sr1 = ScanResult(timestamp="2026-02-27T10:00:00", summary="older")
+        sr2 = ScanResult(timestamp="2026-02-28T10:00:00", summary="newer")
+        store.save(sr1, "<html>1</html>", "TestCorp")
+        store.save(sr2, "<html>2</html>", "TestCorp")
+
+        latest = store.load_latest("TestCorp")
+        assert latest is not None
+        assert latest.timestamp == "2026-02-28T10:00:00"
+        assert latest.summary == "newer"

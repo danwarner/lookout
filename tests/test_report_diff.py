@@ -8,7 +8,7 @@ from lookout.domain.entities import (
     Signal,
     ThreatLevel,
 )
-from lookout.use_cases.report_diff import diff_reports
+from lookout.use_cases.report_diff import diff_reports, format_diff_for_prompt
 
 
 def test_new_radar_signal_detected():
@@ -136,3 +136,59 @@ def test_resolved_monitor_change_detected():
     assert rd.has_differences
     assert len(rd.resolved_monitor_changes) == 1
     assert rd.resolved_monitor_changes[0].summary == "Old issue"
+
+
+# --- format_diff_for_prompt tests ---
+
+
+def test_format_diff_empty_when_no_differences():
+    """format_diff_for_prompt returns empty string when no differences."""
+    signals = [
+        Signal(name="SameCo", website=None, description="Same", relevance_score=50),
+    ]
+    older = ScanResult(timestamp="2026-02-27T10:00:00", radar_signals=signals)
+    newer = ScanResult(timestamp="2026-02-28T10:00:00", radar_signals=signals)
+
+    rd = diff_reports(older, newer)
+    assert format_diff_for_prompt(rd) == ""
+
+
+def test_format_diff_includes_all_change_types():
+    """format_diff_for_prompt includes all change types when present."""
+    older = ScanResult(
+        timestamp="2026-01-28T10:00:00",
+        radar_signals=[
+            Signal(name="OldCo", website=None, description="Gone", relevance_score=30),
+            Signal(name="RisingCo", website=None, description="Rising", relevance_score=40, threat_level=ThreatLevel.LOW),
+        ],
+        monitor_diffs=[
+            Diff(
+                competitor_name="RivalCo",
+                changes=[Change(category="pricing", summary="Old pricing issue", severity=ChangeSeverity.LOW)],
+            ),
+        ],
+    )
+    newer = ScanResult(
+        timestamp="2026-02-28T10:00:00",
+        radar_signals=[
+            Signal(name="NewCo", website=None, description="New", relevance_score=60),
+            Signal(name="RisingCo", website=None, description="Rising", relevance_score=75, threat_level=ThreatLevel.HIGH),
+        ],
+        monitor_diffs=[
+            Diff(
+                competitor_name="RivalCo",
+                changes=[Change(category="pricing", summary="Raised prices 20%", severity=ChangeSeverity.HIGH)],
+            ),
+        ],
+    )
+
+    rd = diff_reports(older, newer)
+    text = format_diff_for_prompt(rd)
+
+    assert "Changes since last scan" in text
+    assert "NewCo" in text
+    assert "OldCo" in text
+    assert "RisingCo" in text
+    assert "40" in text and "75" in text
+    assert "Raised prices 20%" in text
+    assert "Old pricing issue" in text

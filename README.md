@@ -142,9 +142,13 @@ cli/             Click CLI
 
 ![Lookout architecture](lookout-chart.png)
 
-Two-phase pipeline per scan:
-1. **Search** — Claude + `web_search` tool gathers raw intelligence
+Pipeline per scan:
+1. **Search** — Claude + `web_search` tool gathers raw intelligence for radar and each monitored competitor
 2. **Analysis** — Claude (no tools) structures, scores, and diffs the results as JSON
+3. **Auto-track** — Medium/high-threat radar signals are added to the config and monitored in the same run
+4. **Feature landscape** — Loads latest snapshots, extracts features for competitors with data, and classifies each as table stakes, differentiating, or unique
+5. **Historical diff** — Loads the previous report and computes what changed since last scan
+6. **Digest** — Compiles everything into a ScanResult, generates HTML, and saves to `reports/`
 
 ## Cost
 

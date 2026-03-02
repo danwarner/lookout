@@ -5,6 +5,8 @@ from lookout.domain.entities import (
     ChangeSeverity,
     Competitor,
     Diff,
+    FeatureMatrix,
+    FeatureRow,
     ScanResult,
     Signal,
     Snapshot,
@@ -79,3 +81,71 @@ def test_change_source_urls():
     )
     assert len(c.source_urls) == 2
     assert "https://example.com/pricing" in c.source_urls
+
+
+def test_feature_row_creation_and_roundtrip():
+    row = FeatureRow(
+        feature="Desk Booking",
+        competitors={"Acme": "Y", "Globex": "Calendar-based"},
+        classification="differentiating",
+    )
+    d = row.to_dict()
+    assert d["feature"] == "Desk Booking"
+    assert d["competitors"]["Acme"] == "Y"
+    assert d["classification"] == "differentiating"
+
+    restored = FeatureRow.from_dict(d)
+    assert restored.feature == row.feature
+    assert restored.competitors == row.competitors
+    assert restored.classification == row.classification
+
+
+def test_feature_matrix_roundtrip():
+    matrix = FeatureMatrix(
+        competitor_names=["Acme", "Globex"],
+        rows=[
+            FeatureRow(feature="SSO", competitors={"Acme": "Y", "Globex": "Y"}, classification="table_stakes"),
+            FeatureRow(feature="AI Reports", competitors={"Acme": "Y"}, classification="unique"),
+        ],
+    )
+    d = matrix.to_dict()
+    assert d["competitor_names"] == ["Acme", "Globex"]
+    assert len(d["rows"]) == 2
+
+    restored = FeatureMatrix.from_dict(d)
+    assert restored.competitor_names == matrix.competitor_names
+    assert len(restored.rows) == 2
+    assert restored.rows[0].feature == "SSO"
+    assert restored.rows[1].classification == "unique"
+
+
+def test_scan_result_with_feature_matrix_roundtrip():
+    matrix = FeatureMatrix(
+        competitor_names=["Acme"],
+        rows=[FeatureRow(feature="API", competitors={"Acme": "Y"}, classification="table_stakes")],
+    )
+    sr = ScanResult(
+        timestamp="2026-03-01T00:00:00",
+        summary="Test summary",
+        feature_matrix=matrix,
+    )
+    d = sr.to_dict()
+    assert "feature_matrix" in d
+    assert d["feature_matrix"]["competitor_names"] == ["Acme"]
+
+    restored = ScanResult.from_dict(d)
+    assert restored.feature_matrix is not None
+    assert restored.feature_matrix.rows[0].feature == "API"
+
+
+def test_scan_result_backward_compat_no_feature_matrix():
+    """Old report dicts without feature_matrix should deserialize cleanly."""
+    d = {
+        "timestamp": "2026-02-28T00:00:00",
+        "radar_signals": [],
+        "monitor_diffs": [],
+        "summary": "Old report",
+    }
+    sr = ScanResult.from_dict(d)
+    assert sr.feature_matrix is None
+    assert sr.summary == "Old report"

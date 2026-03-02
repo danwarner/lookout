@@ -147,6 +147,51 @@ class Snapshot:
 
 
 @dataclass
+class FeatureRow:
+    """A single feature in the cross-competitor feature matrix."""
+
+    feature: str
+    competitors: dict[str, str]  # competitor_name → "Y" or brief note
+    classification: str  # "table_stakes", "differentiating", or "unique"
+
+    def to_dict(self) -> dict:
+        return {
+            "feature": self.feature,
+            "competitors": self.competitors,
+            "classification": self.classification,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> FeatureRow:
+        return cls(
+            feature=data["feature"],
+            competitors=data.get("competitors", {}),
+            classification=data.get("classification", "table_stakes"),
+        )
+
+
+@dataclass
+class FeatureMatrix:
+    """Cross-competitor feature landscape matrix."""
+
+    competitor_names: list[str] = field(default_factory=list)
+    rows: list[FeatureRow] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "competitor_names": self.competitor_names,
+            "rows": [r.to_dict() for r in self.rows],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> FeatureMatrix:
+        return cls(
+            competitor_names=data.get("competitor_names", []),
+            rows=[FeatureRow.from_dict(r) for r in data.get("rows", [])],
+        )
+
+
+@dataclass
 class ScanResult:
     """Combined results from a full scan (radar + monitor)."""
 
@@ -154,20 +199,28 @@ class ScanResult:
     radar_signals: list[Signal] = field(default_factory=list)
     monitor_diffs: list[Diff] = field(default_factory=list)
     summary: str = ""
+    feature_matrix: FeatureMatrix | None = None
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "timestamp": self.timestamp,
             "radar_signals": [s.to_dict() for s in self.radar_signals],
             "monitor_diffs": [d.to_dict() for d in self.monitor_diffs],
             "summary": self.summary,
         }
+        if self.feature_matrix is not None:
+            d["feature_matrix"] = self.feature_matrix.to_dict()
+        return d
 
     @classmethod
     def from_dict(cls, data: dict) -> ScanResult:
+        fm = None
+        if "feature_matrix" in data:
+            fm = FeatureMatrix.from_dict(data["feature_matrix"])
         return cls(
             timestamp=data["timestamp"],
             radar_signals=[Signal.from_dict(s) for s in data.get("radar_signals", [])],
             monitor_diffs=[Diff.from_dict(d) for d in data.get("monitor_diffs", [])],
             summary=data.get("summary", ""),
+            feature_matrix=fm,
         )

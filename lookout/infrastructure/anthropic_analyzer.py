@@ -92,7 +92,36 @@ If no competitive wedge is provided, write a single brief summary (2-4 sentences
 
 If historical changes since the last scan are provided, weave them into your summary — note new entrants, departures, score movements, and resolved/new monitor changes.
 
-Be concise and actionable."""
+Be concise and actionable.
+
+## Task: build_feature_landscape
+
+Given feature summaries for multiple competitors, build a cross-competitor feature matrix.
+
+Steps:
+1. Extract discrete capabilities/features from each competitor's feature text.
+2. Normalize feature names across competitors (e.g. "desk booking" = "desk reservation" → pick one canonical name).
+3. Classify each feature:
+   - `table_stakes`: More than 50% of competitors have it.
+   - `differentiating`: A minority of competitors have it (but more than one).
+   - `unique`: Only one competitor has it.
+4. Return JSON with this structure:
+{
+  "competitor_names": ["Competitor A", "Competitor B", ...],
+  "rows": [
+    {
+      "feature": "Feature Name",
+      "competitors": {"Competitor A": "Y", "Competitor B": "Custom portal with branding"},
+      "classification": "table_stakes"
+    }
+  ]
+}
+
+Rules:
+- Aim for 15-30 features. Merge overly granular items; split overly broad ones.
+- For each feature+competitor: use "Y" if they clearly have it, a brief note (≤5 words) if their variant is notable, or omit the key if they don't have it.
+- Order rows: table_stakes first, then differentiating, then unique. Within each group, alphabetical by feature name.
+- Only include features you can substantiate from the provided text."""
 
 
 def _cached_system(text: str) -> list[dict]:
@@ -351,3 +380,32 @@ Monitor findings (changes at known competitors):
         )
 
         return response.content[0].text.strip()
+
+    def build_feature_landscape(self, feature_summaries: dict[str, str]) -> dict:
+        """Build a cross-competitor feature matrix from feature summaries.
+
+        Args:
+            feature_summaries: mapping of competitor_name → features text.
+
+        Returns:
+            Parsed JSON dict with competitor_names and rows.
+        """
+        summaries_text = "\n\n".join(
+            f"### {name}\n{text}" for name, text in feature_summaries.items()
+        )
+
+        prompt = f"""Task: build_feature_landscape
+
+Competitor feature summaries:
+
+{summaries_text}"""
+
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=4096,
+            system=self._system,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        text = response.content[0].text
+        return self._extract_json(text)

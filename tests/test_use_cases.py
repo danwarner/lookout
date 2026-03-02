@@ -1,7 +1,7 @@
 """Tests for use cases — uses fakes instead of real API calls."""
 
-from lookout.domain.entities import Change, ChangeSeverity, Diff, Signal, Snapshot, ThreatLevel
-from lookout.use_cases.compile_digest import build_html_digest, compile_digest
+from lookout.domain.entities import Change, ChangeSeverity, Diff, FeatureMatrix, FeatureRow, Signal, Snapshot, ThreatLevel
+from lookout.use_cases.compile_digest import build_feature_matrix_from_response, build_html_digest, compile_digest
 
 
 def test_compile_digest_returns_html():
@@ -153,3 +153,69 @@ def test_competitive_wedge_config_default():
         website="https://test.com",
     )
     assert company.competitive_wedge == ""
+
+
+def test_feature_landscape_renders_in_html():
+    """Feature landscape table should appear in HTML when matrix is present."""
+    from lookout.domain.entities import ScanResult
+
+    matrix = FeatureMatrix(
+        competitor_names=["Acme", "Globex"],
+        rows=[
+            FeatureRow(feature="SSO", competitors={"Acme": "Y", "Globex": "Y"}, classification="table_stakes"),
+            FeatureRow(feature="AI Reports", competitors={"Acme": "Y"}, classification="unique"),
+        ],
+    )
+    sr = ScanResult(feature_matrix=matrix)
+    html = build_html_digest(sr, "TestCorp")
+    assert "Feature Landscape" in html
+    assert "SSO" in html
+    assert "AI Reports" in html
+    assert "Acme" in html
+    assert "Globex" in html
+    assert "TABLE STAKES" in html
+    assert "UNIQUE" in html
+
+
+def test_feature_landscape_omitted_when_none():
+    """Feature landscape should not appear in HTML when matrix is None."""
+    from lookout.domain.entities import ScanResult
+
+    sr = ScanResult()
+    html = build_html_digest(sr, "TestCorp")
+    assert "Feature Landscape" not in html
+
+
+def test_compile_digest_passes_feature_matrix():
+    """compile_digest should pass feature_matrix through to ScanResult."""
+    matrix = FeatureMatrix(
+        competitor_names=["Acme"],
+        rows=[FeatureRow(feature="API", competitors={"Acme": "Y"}, classification="table_stakes")],
+    )
+    scan_result, html = compile_digest(
+        radar_signals=[],
+        monitor_diffs=[],
+        summary="",
+        company_name="TestCorp",
+        feature_matrix=matrix,
+    )
+    assert scan_result.feature_matrix is not None
+    assert scan_result.feature_matrix.rows[0].feature == "API"
+    assert "Feature Landscape" in html
+
+
+def test_build_feature_matrix_from_response():
+    """build_feature_matrix_from_response should convert raw JSON to FeatureMatrix."""
+    data = {
+        "competitor_names": ["Acme", "Globex"],
+        "rows": [
+            {"feature": "SSO", "competitors": {"Acme": "Y", "Globex": "Y"}, "classification": "table_stakes"},
+            {"feature": "Custom Branding", "competitors": {"Acme": "White-label"}, "classification": "unique"},
+        ],
+    }
+    matrix = build_feature_matrix_from_response(data)
+    assert matrix.competitor_names == ["Acme", "Globex"]
+    assert len(matrix.rows) == 2
+    assert matrix.rows[0].feature == "SSO"
+    assert matrix.rows[1].competitors["Acme"] == "White-label"
+    assert matrix.rows[1].classification == "unique"

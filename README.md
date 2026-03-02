@@ -26,7 +26,9 @@ Lookout uses Claude's web search as its sole data source. No scraping, no browse
 
 **Monitor** — Checks known competitors for changes in pricing, features, hiring, funding, and messaging. Compares against previous snapshots to detect meaningful diffs. Each change includes source URLs so you can dig deeper.
 
-**Digest** — Combines everything into an HTML email with an executive summary, competitive wedge analysis (how findings affect your positioning), threat assessments, and change alerts with clickable sources.
+**Feature Landscape** — After monitor scans, builds a cross-competitor feature matrix. Normalizes feature names across competitors and classifies each as table stakes (>50% have it), differentiating (minority), or unique (only one). Renders as a Rich table in the CLI and an HTML table in email digests.
+
+**Digest** — Combines everything into an HTML email with an executive summary, feature landscape, competitive wedge analysis (how findings affect your positioning), threat assessments, and change alerts with clickable sources.
 
 **Historical context** — On repeat scans, Lookout loads the previous report, diffs it against the current one, and injects the changes into the summary prompt. The executive summary narrates what changed — new entrants, departures, score movements, and resolved issues.
 

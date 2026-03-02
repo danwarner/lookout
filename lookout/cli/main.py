@@ -23,7 +23,7 @@ from lookout.infrastructure.config_loader import load_config
 from lookout.infrastructure.file_report_store import FileReportStore
 from lookout.infrastructure.file_snapshot_store import FileSnapshotStore
 from lookout.infrastructure.resend_sender import ResendSender
-from lookout.use_cases.compile_digest import build_html_digest, compile_digest
+from lookout.use_cases.compile_digest import build_feature_matrix_from_response, build_html_digest, compile_digest
 from lookout.use_cases.monitor_scan import run_monitor_scan, run_single_monitor
 from lookout.use_cases.radar_scan import run_radar_scan
 from lookout.use_cases.report_diff import diff_reports, format_diff_for_prompt
@@ -320,6 +320,23 @@ def scan(config: str, email: str | None, no_email: bool):
     changes_count = sum(len(d.changes) for d in monitor_diffs)
     console.print(f"  Detected [bold]{changes_count}[/bold] change(s) across {len(cfg.competitors)} competitors\n")
 
+    # Feature landscape
+    feature_matrix = None
+    feature_summaries = {}
+    for comp in cfg.competitors:
+        snapshot = snapshot_store.load_latest(comp.name)
+        if snapshot and snapshot.sections.get("features"):
+            feature_summaries[comp.name] = snapshot.sections["features"]
+
+    if len(feature_summaries) >= 2:
+        try:
+            with console.status("[bold cyan]Building feature landscape...[/bold cyan]"):
+                landscape_data = analyzer.build_feature_landscape(feature_summaries)
+            feature_matrix = build_feature_matrix_from_response(landscape_data)
+        except Exception as e:
+            console.print(f"[yellow]Warning:[/yellow] Feature landscape skipped: {e}")
+            feature_matrix = None
+
     # Historical context
     historical_changes = _build_historical_context(report_store, cfg.company.name, radar_signals, monitor_diffs)
 
@@ -335,7 +352,7 @@ def scan(config: str, email: str | None, no_email: bool):
             historical_changes=historical_changes,
         )
 
-    scan_result, html = compile_digest(radar_signals, monitor_diffs, summary, cfg.company.name)
+    scan_result, html = compile_digest(radar_signals, monitor_diffs, summary, cfg.company.name, feature_matrix=feature_matrix)
 
     # Save report
     report_store.save(scan_result, html, cfg.company.name)
@@ -522,6 +539,23 @@ def report(config: str, email: str | None):
             max_searches_per_competitor=cfg.monitor.max_searches_per_competitor,
         )
 
+    # Feature landscape
+    feature_matrix = None
+    feature_summaries = {}
+    for comp in cfg.competitors:
+        snapshot = snapshot_store.load_latest(comp.name)
+        if snapshot and snapshot.sections.get("features"):
+            feature_summaries[comp.name] = snapshot.sections["features"]
+
+    if len(feature_summaries) >= 2:
+        try:
+            with console.status("[bold cyan]Building feature landscape...[/bold cyan]"):
+                landscape_data = analyzer.build_feature_landscape(feature_summaries)
+            feature_matrix = build_feature_matrix_from_response(landscape_data)
+        except Exception as e:
+            console.print(f"[yellow]Warning:[/yellow] Feature landscape skipped: {e}")
+            feature_matrix = None
+
     # Historical context
     historical_changes = _build_historical_context(report_store, cfg.company.name, radar_signals, monitor_diffs)
 
@@ -535,7 +569,7 @@ def report(config: str, email: str | None):
             historical_changes=historical_changes,
         )
 
-    scan_result, html = compile_digest(radar_signals, monitor_diffs, summary, cfg.company.name)
+    scan_result, html = compile_digest(radar_signals, monitor_diffs, summary, cfg.company.name, feature_matrix=feature_matrix)
 
     # Save report
     report_store.save(scan_result, html, cfg.company.name)
@@ -767,11 +801,48 @@ def _auto_track_competitors(radar_signals: list, cfg, config_path: str) -> None:
         yaml.dump(raw, f, default_flow_style=False, sort_keys=False)
 
 
+def _display_feature_landscape(feature_matrix):
+    """Display the feature landscape matrix as a Rich table."""
+    table = Table(title="Feature Landscape")
+    table.add_column("Feature", style="bold")
+    for name in feature_matrix.competitor_names:
+        table.add_column(name, justify="center")
+    table.add_column("Type", justify="center")
+
+    for row in feature_matrix.rows:
+        cells = [row.feature]
+        for name in feature_matrix.competitor_names:
+            val = row.competitors.get(name, "")
+            if val == "Y":
+                cells.append("[green]Y[/green]")
+            elif val:
+                cells.append(f"[dim]{val}[/dim]")
+            else:
+                cells.append("[dim]-[/dim]")
+        # Classification styling
+        cls = row.classification
+        if cls == "table_stakes":
+            cells.append("[green]table stakes[/green]")
+        elif cls == "differentiating":
+            cells.append("[yellow]differentiating[/yellow]")
+        elif cls == "unique":
+            cells.append("[magenta]unique[/magenta]")
+        else:
+            cells.append(cls)
+        table.add_row(*cells)
+
+    console.print(table)
+
+
 def _display_results(scan_result):
     """Display scan results in the terminal."""
     # Summary
     if scan_result.summary:
         console.print(Panel(scan_result.summary, title="Executive Summary", style="bold"))
+
+    # Feature Landscape
+    if scan_result.feature_matrix is not None and scan_result.feature_matrix.rows:
+        _display_feature_landscape(scan_result.feature_matrix)
 
     # Radar
     if scan_result.radar_signals:

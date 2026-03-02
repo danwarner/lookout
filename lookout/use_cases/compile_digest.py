@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from lookout.domain.entities import ChangeSeverity, Diff, ScanResult, Signal, ThreatLevel
+from lookout.domain.entities import (
+    ChangeSeverity,
+    Diff,
+    FeatureMatrix,
+    FeatureRow,
+    ScanResult,
+    Signal,
+    ThreatLevel,
+)
 
 
 def _threat_color(level: ThreatLevel) -> str:
@@ -23,6 +31,74 @@ def _threat_badge(level: ThreatLevel) -> str:
 def _severity_badge(severity: ChangeSeverity) -> str:
     color = _severity_color(severity)
     return f'<span style="background:{color};color:#fff;padding:2px 8px;border-radius:3px;font-size:12px;font-weight:bold;">{severity.value.upper()}</span>'
+
+
+def build_feature_matrix_from_response(data: dict) -> FeatureMatrix:
+    """Convert raw JSON response from the analyzer into a FeatureMatrix entity."""
+    rows = [
+        FeatureRow(
+            feature=r["feature"],
+            competitors=r.get("competitors", {}),
+            classification=r.get("classification", "table_stakes"),
+        )
+        for r in data.get("rows", [])
+    ]
+    return FeatureMatrix(
+        competitor_names=data.get("competitor_names", []),
+        rows=rows,
+    )
+
+
+def _feature_landscape_html(matrix: FeatureMatrix) -> str:
+    """Render the feature landscape matrix as an HTML table."""
+    classification_badges = {
+        "table_stakes": '<span style="background:#27ae60;color:#fff;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:bold;">TABLE STAKES</span>',
+        "differentiating": '<span style="background:#f39c12;color:#fff;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:bold;">DIFFERENTIATING</span>',
+        "unique": '<span style="background:#8e44ad;color:#fff;padding:2px 8px;border-radius:3px;font-size:11px;font-weight:bold;">UNIQUE</span>',
+    }
+
+    # Build header row
+    header_cells = '<th style="padding:8px 12px;text-align:left;border-bottom:2px solid #333;background:#f5f5f5;">Feature</th>'
+    for name in matrix.competitor_names:
+        header_cells += f'<th style="padding:8px 12px;text-align:center;border-bottom:2px solid #333;background:#f5f5f5;">{name}</th>'
+    header_cells += '<th style="padding:8px 12px;text-align:center;border-bottom:2px solid #333;background:#f5f5f5;">Type</th>'
+
+    # Build data rows
+    body_rows = ""
+    for row in matrix.rows:
+        cells = f'<td style="padding:6px 12px;border-bottom:1px solid #eee;font-weight:500;">{row.feature}</td>'
+        for name in matrix.competitor_names:
+            val = row.competitors.get(name, "")
+            if val == "Y":
+                cell_content = '<span style="color:#27ae60;font-weight:bold;">&#10003;</span>'
+            elif val:
+                cell_content = f'<span style="color:#555;font-size:12px;">{val}</span>'
+            else:
+                cell_content = '<span style="color:#ccc;">&mdash;</span>'
+            cells += f'<td style="padding:6px 12px;text-align:center;border-bottom:1px solid #eee;">{cell_content}</td>'
+        badge = classification_badges.get(row.classification, row.classification)
+        cells += f'<td style="padding:6px 12px;text-align:center;border-bottom:1px solid #eee;">{badge}</td>'
+        body_rows += f"<tr>{cells}</tr>"
+
+    legend = (
+        '<div style="margin-top:12px;font-size:12px;color:#666;">'
+        '<span style="background:#27ae60;color:#fff;padding:1px 6px;border-radius:2px;margin-right:8px;">TABLE STAKES</span> &gt;50% have it &nbsp;&nbsp;'
+        '<span style="background:#f39c12;color:#fff;padding:1px 6px;border-radius:2px;margin-right:8px;">DIFFERENTIATING</span> minority have it &nbsp;&nbsp;'
+        '<span style="background:#8e44ad;color:#fff;padding:1px 6px;border-radius:2px;margin-right:8px;">UNIQUE</span> only one has it'
+        "</div>"
+    )
+
+    return f"""
+        <div style="margin:24px 0;">
+            <h2 style="color:#2c3e50;border-bottom:2px solid #2c3e50;padding-bottom:8px;">&#x1F5FA; Feature Landscape</h2>
+            <div style="overflow-x:auto;">
+                <table style="width:100%;border-collapse:collapse;font-size:14px;">
+                    <thead><tr>{header_cells}</tr></thead>
+                    <tbody>{body_rows}</tbody>
+                </table>
+            </div>
+            {legend}
+        </div>"""
 
 
 def build_html_digest(scan_result: ScanResult, company_name: str) -> str:
@@ -119,6 +195,11 @@ def build_html_digest(scan_result: ScanResult, company_name: str) -> str:
             <p style="color:#333;line-height:1.6;">{summary_body}</p>
         </div>"""
 
+    # Feature landscape section
+    feature_landscape_html = ""
+    if scan_result.feature_matrix is not None and scan_result.feature_matrix.rows:
+        feature_landscape_html = _feature_landscape_html(scan_result.feature_matrix)
+
     html = f"""<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
@@ -130,6 +211,7 @@ def build_html_digest(scan_result: ScanResult, company_name: str) -> str:
     </div>
 
     {summary_html}
+    {feature_landscape_html}
     {radar_html}
     {monitor_html}
     {no_changes_html}
@@ -148,6 +230,7 @@ def compile_digest(
     monitor_diffs: list[Diff],
     summary: str,
     company_name: str,
+    feature_matrix: FeatureMatrix | None = None,
 ) -> tuple[ScanResult, str]:
     """Compile scan results into a ScanResult and HTML digest.
 
@@ -157,6 +240,7 @@ def compile_digest(
         radar_signals=radar_signals,
         monitor_diffs=monitor_diffs,
         summary=summary,
+        feature_matrix=feature_matrix,
     )
 
     html = build_html_digest(scan_result, company_name)

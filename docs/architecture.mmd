@@ -1,0 +1,57 @@
+flowchart TD
+    A["User runs CLI command
+    e.g., lookout scan"] --> B["Load configuration
+    from config YAML"]
+    B --> C{"Command type?"}
+
+    C -- "Radar" --> D["Search market for
+    unknown competitors"]
+    D --> E["Claude performs web search
+    using web_search tool"]
+    E --> F["Gathers raw intelligence
+    from web sources"]
+    F --> G["Claude analyzes results
+    without tools —
+    structures as JSON"]
+    G --> H["Score companies by
+    relevance, threat level,
+    ICP overlap"]
+    H --> I["Auto-track: add medium/high-
+    threat signals to config"]
+
+    C -- "Monitor" --> J["For each known competitor"]
+    J --> K["Claude searches for changes
+    in pricing, features, jobs,
+    funding, messaging
+    using web_search tool"]
+    K --> L["Retrieve previous
+    snapshot from storage"]
+    L --> M["Compare current vs previous
+    to detect meaningful diffs"]
+    M --> N["Claude analyzes changes
+    without tools — outputs
+    JSON with source URLs"]
+
+    I --> O["Load snapshots, extract
+    features for ≥2 competitors"]
+    N --> O
+    O --> P["Claude builds feature
+    landscape — normalizes
+    & classifies features"]
+    P --> Q["Load previous report
+    and compute historical diff"]
+    Q --> R["Claude generates
+    executive summary"]
+    R --> S["Compile digest"]
+    S --> T["Save report to reports/
+    JSON + HTML"]
+
+    T --> U["Generate HTML email
+    with executive summary,
+    feature landscape,
+    competitive wedge analysis,
+    radar & monitor alerts"]
+
+    U --> V{"--no-email flag?"}
+    V -- "Yes" --> W["Output to terminal"]
+    V -- "No" --> X["Send email via Resend"]

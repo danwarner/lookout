@@ -30,32 +30,32 @@ def test_compile_digest_returns_html():
         )
     ]
 
-    scan_result, html = compile_digest(
+    output = compile_digest(
         radar_signals=signals,
         monitor_diffs=diffs,
         summary="Key findings from the scan.",
         company_name="TestCorp",
     )
 
-    assert len(scan_result.radar_signals) == 1
-    assert len(scan_result.monitor_diffs) == 1
-    assert "NewCo" in html
-    assert "OldCo" in html
-    assert "Raised prices" in html
-    assert "TestCorp" in html
-    assert "Key findings" in html
+    assert len(output.scan_result.radar_signals) == 1
+    assert len(output.scan_result.monitor_diffs) == 1
+    assert "NewCo" in output.html
+    assert "OldCo" in output.html
+    assert "Raised prices" in output.html
+    assert "TestCorp" in output.html
+    assert "Key findings" in output.html
 
 
 def test_compile_digest_empty():
-    scan_result, html = compile_digest(
+    output = compile_digest(
         radar_signals=[],
         monitor_diffs=[],
         summary="",
         company_name="TestCorp",
     )
 
-    assert len(scan_result.radar_signals) == 0
-    assert "TestCorp" in html
+    assert len(output.scan_result.radar_signals) == 0
+    assert "TestCorp" in output.html
 
 
 def test_build_html_digest_no_changes():
@@ -192,16 +192,16 @@ def test_compile_digest_passes_feature_matrix():
         competitor_names=["Acme"],
         rows=[FeatureRow(feature="API", competitors={"Acme": "Y"}, classification="table_stakes")],
     )
-    scan_result, html = compile_digest(
+    output = compile_digest(
         radar_signals=[],
         monitor_diffs=[],
         summary="",
         company_name="TestCorp",
         feature_matrix=matrix,
     )
-    assert scan_result.feature_matrix is not None
-    assert scan_result.feature_matrix.rows[0].feature == "API"
-    assert "Feature Landscape" in html
+    assert output.scan_result.feature_matrix is not None
+    assert output.scan_result.feature_matrix.rows[0].feature == "API"
+    assert "Feature Landscape" in output.html
 
 
 def test_build_feature_matrix_from_response():
@@ -358,3 +358,26 @@ def test_build_csv_feature_matrix_empty_rows():
 
     matrix = FeatureMatrix(competitor_names=["Acme"], rows=[])
     assert build_csv_feature_matrix(matrix) == ""
+
+
+def test_compile_digest_returns_digest_output():
+    """compile_digest returns a DigestOutput with all formats."""
+    from lookout.use_cases.compile_digest import DigestOutput
+
+    matrix = FeatureMatrix(
+        competitor_names=["Acme"],
+        rows=[FeatureRow(feature="API", competitors={"Acme": "Y"}, classification="table_stakes")],
+    )
+    result = compile_digest(
+        radar_signals=[],
+        monitor_diffs=[],
+        summary="Findings.",
+        company_name="TestCorp",
+        feature_matrix=matrix,
+    )
+
+    assert isinstance(result, DigestOutput)
+    assert result.scan_result is not None
+    assert "TestCorp" in result.html
+    assert "# Lookout Report — TestCorp" in result.markdown
+    assert "Feature,Acme,Classification" in result.feature_csv

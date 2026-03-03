@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 
 from lookout.domain.entities import (
@@ -13,6 +14,15 @@ from lookout.domain.entities import (
     Signal,
     ThreatLevel,
 )
+
+
+@dataclass
+class DigestOutput:
+    """All output formats from digest compilation."""
+    scan_result: ScanResult
+    html: str
+    markdown: str
+    feature_csv: str
 
 
 def _threat_color(level: ThreatLevel) -> str:
@@ -348,10 +358,10 @@ def compile_digest(
     summary: str,
     company_name: str,
     feature_matrix: FeatureMatrix | None = None,
-) -> tuple[ScanResult, str]:
-    """Compile scan results into a ScanResult and HTML digest.
+) -> DigestOutput:
+    """Compile scan results into all output formats.
 
-    Returns (ScanResult, html_string).
+    Returns a DigestOutput with scan_result, html, markdown, and feature_csv.
     """
     scan_result = ScanResult(
         radar_signals=radar_signals,
@@ -361,4 +371,11 @@ def compile_digest(
     )
 
     html = build_html_digest(scan_result, company_name)
-    return scan_result, html
+    markdown = build_markdown_digest(scan_result, company_name)
+    feature_csv = build_csv_feature_matrix(feature_matrix)
+    return DigestOutput(
+        scan_result=scan_result,
+        html=html,
+        markdown=markdown,
+        feature_csv=feature_csv,
+    )

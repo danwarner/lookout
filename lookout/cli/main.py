@@ -352,14 +352,14 @@ def scan(config: str, email: str | None, no_email: bool):
             historical_changes=historical_changes,
         )
 
-    scan_result, html = compile_digest(radar_signals, monitor_diffs, summary, cfg.company.name, feature_matrix=feature_matrix)
+    digest = compile_digest(radar_signals, monitor_diffs, summary, cfg.company.name, feature_matrix=feature_matrix)
 
     # Save report
-    report_store.save(scan_result, html, cfg.company.name)
+    report_store.save(digest.scan_result, digest.html, cfg.company.name)
     console.print("[dim]Report saved to reports/[/dim]")
 
     # Display results
-    _display_results(scan_result)
+    _display_results(digest.scan_result)
 
     # Send email
     if not no_email:
@@ -373,7 +373,7 @@ def scan(config: str, email: str | None, no_email: bool):
         subject = f"{cfg.email.subject_prefix} Competitive Intelligence Digest"
 
         with console.status("[bold]Sending email...[/bold]"):
-            success = sender.send(to=recipient, from_addr=cfg.email.from_addr, subject=subject, html_body=html)
+            success = sender.send(to=recipient, from_addr=cfg.email.from_addr, subject=subject, html_body=digest.html)
 
         if success:
             console.print(f"\n[green]Email sent to {recipient}[/green]")
@@ -569,19 +569,19 @@ def report(config: str, email: str | None):
             historical_changes=historical_changes,
         )
 
-    scan_result, html = compile_digest(radar_signals, monitor_diffs, summary, cfg.company.name, feature_matrix=feature_matrix)
+    digest = compile_digest(radar_signals, monitor_diffs, summary, cfg.company.name, feature_matrix=feature_matrix)
 
     # Save report
-    report_store.save(scan_result, html, cfg.company.name)
+    report_store.save(digest.scan_result, digest.html, cfg.company.name)
     console.print("[dim]Report saved to reports/[/dim]")
 
-    _display_results(scan_result)
+    _display_results(digest.scan_result)
 
     if email:
         resend_key = _get_resend_key()
         sender = ResendSender(api_key=resend_key)
         subject = f"{cfg.email.subject_prefix} Competitive Intelligence Report"
-        success = sender.send(to=email, from_addr=cfg.email.from_addr, subject=subject, html_body=html)
+        success = sender.send(to=email, from_addr=cfg.email.from_addr, subject=subject, html_body=digest.html)
         if success:
             console.print(f"\n[green]Report sent to {email}[/green]")
         else:

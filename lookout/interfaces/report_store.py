@@ -11,8 +11,9 @@ class ReportStore(ABC):
     """Persists scan reports (JSON + HTML) for history and diffing."""
 
     @abstractmethod
-    def save(self, scan_result: ScanResult, html: str, company_name: str) -> None:
-        """Save a scan report (both JSON and HTML)."""
+    def save(self, scan_result: ScanResult, html: str, company_name: str,
+             markdown: str = "", feature_csv: str = "") -> None:
+        """Save a scan report (JSON, HTML, and optionally markdown/CSV)."""
         ...
 
     @abstractmethod

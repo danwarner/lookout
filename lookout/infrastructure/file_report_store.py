@@ -21,7 +21,8 @@ class FileReportStore(ReportStore):
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
 
-    def save(self, scan_result: ScanResult, html: str, company_name: str) -> None:
+    def save(self, scan_result: ScanResult, html: str, company_name: str,
+             markdown: str = "", feature_csv: str = "") -> None:
         safe_name = _sanitize_name(company_name)
         ts = scan_result.timestamp.replace(":", "-").replace(".", "-")
         data = scan_result.to_dict()
@@ -40,6 +41,24 @@ class FileReportStore(ReportStore):
         latest_path = self.directory / f"{safe_name}_latest.json"
         with open(latest_path, "w") as f:
             json.dump(data, f, indent=2)
+
+        # Save markdown
+        if markdown:
+            md_path = self.directory / f"{safe_name}_{ts}.md"
+            with open(md_path, "w") as f:
+                f.write(markdown)
+            latest_md = self.directory / f"{safe_name}_latest.md"
+            with open(latest_md, "w") as f:
+                f.write(markdown)
+
+        # Save feature CSV
+        if feature_csv:
+            csv_path = self.directory / f"{safe_name}_{ts}_features.csv"
+            with open(csv_path, "w") as f:
+                f.write(feature_csv)
+            latest_csv = self.directory / f"{safe_name}_latest_features.csv"
+            with open(latest_csv, "w") as f:
+                f.write(feature_csv)
 
     def list_reports(self, company_name: str) -> list[dict]:
         safe_name = _sanitize_name(company_name)

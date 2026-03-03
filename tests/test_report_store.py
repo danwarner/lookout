@@ -211,3 +211,45 @@ def test_load_latest_returns_most_recent_after_multiple_saves():
         assert latest is not None
         assert latest.timestamp == "2026-02-28T10:00:00"
         assert latest.summary == "newer"
+
+
+# --- Markdown and CSV saving tests ---
+
+
+def test_file_report_store_saves_markdown_and_csv():
+    """save() writes .md and .csv files alongside JSON and HTML."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        store = FileReportStore(directory=tmpdir)
+        sr = _make_scan_result()
+        store.save(
+            sr, "<html>test</html>", "TestCorp",
+            markdown="# Report", feature_csv="Feature,A\nSSO,Y\n",
+        )
+
+        from pathlib import Path
+        files = sorted(Path(tmpdir).iterdir())
+        filenames = [f.name for f in files]
+
+        # Should have timestamped + latest for each format
+        assert any(f.endswith(".md") and "latest" not in f for f in filenames)
+        assert any(f == "testcorp_latest.md" for f in filenames)
+        assert any(f.endswith("_features.csv") and "latest" not in f for f in filenames)
+        assert any(f == "testcorp_latest_features.csv" for f in filenames)
+
+        # Verify content
+        latest_md = Path(tmpdir) / "testcorp_latest.md"
+        assert latest_md.read_text() == "# Report"
+        latest_csv = Path(tmpdir) / "testcorp_latest_features.csv"
+        assert latest_csv.read_text() == "Feature,A\nSSO,Y\n"
+
+
+def test_file_report_store_skips_csv_when_empty():
+    """save() does not write CSV files when feature_csv is empty."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        store = FileReportStore(directory=tmpdir)
+        sr = _make_scan_result()
+        store.save(sr, "<html>test</html>", "TestCorp", markdown="# Report")
+
+        from pathlib import Path
+        filenames = [f.name for f in Path(tmpdir).iterdir()]
+        assert not any("_features.csv" in f for f in filenames)

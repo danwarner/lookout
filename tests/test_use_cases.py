@@ -360,6 +360,48 @@ def test_build_csv_feature_matrix_empty_rows():
     assert build_csv_feature_matrix(matrix) == ""
 
 
+def test_resend_sender_accepts_attachments():
+    """ResendSender.send() accepts optional attachments parameter."""
+    from unittest.mock import patch, MagicMock
+    from lookout.infrastructure.resend_sender import ResendSender
+
+    sender = ResendSender(api_key="test-key")
+
+    with patch("resend.Emails.send", return_value={"id": "123"}) as mock_send:
+        result = sender.send(
+            to="test@example.com",
+            from_addr="from@example.com",
+            subject="Test",
+            html_body="<html></html>",
+            attachments=[{"filename": "report.md", "content": "base64content"}],
+        )
+
+    assert result is True
+    call_params = mock_send.call_args[0][0]
+    assert "attachments" in call_params
+    assert call_params["attachments"][0]["filename"] == "report.md"
+
+
+def test_resend_sender_no_attachments_by_default():
+    """ResendSender.send() works without attachments (backward compatible)."""
+    from unittest.mock import patch
+    from lookout.infrastructure.resend_sender import ResendSender
+
+    sender = ResendSender(api_key="test-key")
+
+    with patch("resend.Emails.send", return_value={"id": "123"}) as mock_send:
+        result = sender.send(
+            to="test@example.com",
+            from_addr="from@example.com",
+            subject="Test",
+            html_body="<html></html>",
+        )
+
+    assert result is True
+    call_params = mock_send.call_args[0][0]
+    assert "attachments" not in call_params
+
+
 def test_compile_digest_returns_digest_output():
     """compile_digest returns a DigestOutput with all formats."""
     from lookout.use_cases.compile_digest import DigestOutput

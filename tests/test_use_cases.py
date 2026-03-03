@@ -323,3 +323,38 @@ def test_build_markdown_digest_no_feature_matrix():
 
     assert "## Executive Summary" in md
     assert "## Feature Landscape" not in md
+
+
+def test_build_csv_feature_matrix():
+    """build_csv_feature_matrix renders a flat CSV from the feature matrix."""
+    from lookout.use_cases.compile_digest import build_csv_feature_matrix
+
+    matrix = FeatureMatrix(
+        competitor_names=["Acme", "Globex"],
+        rows=[
+            FeatureRow(feature="SSO", competitors={"Acme": "Y", "Globex": "Y"}, classification="table_stakes"),
+            FeatureRow(feature="AI Reports", competitors={"Acme": "Y"}, classification="unique"),
+        ],
+    )
+    csv_str = build_csv_feature_matrix(matrix)
+
+    lines = csv_str.strip().split("\n")
+    assert len(lines) == 3  # header + 2 data rows
+    assert lines[0] == "Feature,Acme,Globex,Classification"
+    assert lines[1] == "SSO,Y,Y,table_stakes"
+    assert lines[2] == "AI Reports,Y,,unique"
+
+
+def test_build_csv_feature_matrix_none():
+    """build_csv_feature_matrix returns empty string for None matrix."""
+    from lookout.use_cases.compile_digest import build_csv_feature_matrix
+
+    assert build_csv_feature_matrix(None) == ""
+
+
+def test_build_csv_feature_matrix_empty_rows():
+    """build_csv_feature_matrix returns empty string when matrix has no rows."""
+    from lookout.use_cases.compile_digest import build_csv_feature_matrix
+
+    matrix = FeatureMatrix(competitor_names=["Acme"], rows=[])
+    assert build_csv_feature_matrix(matrix) == ""

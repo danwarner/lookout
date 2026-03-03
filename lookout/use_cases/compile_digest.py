@@ -317,6 +317,31 @@ def build_markdown_digest(scan_result: ScanResult, company_name: str) -> str:
     return "\n".join(lines)
 
 
+def build_csv_feature_matrix(feature_matrix: FeatureMatrix | None) -> str:
+    """Build a CSV string from the feature matrix. Returns empty string if no matrix."""
+    if feature_matrix is None or not feature_matrix.rows:
+        return ""
+
+    import csv
+    import io
+
+    output = io.StringIO()
+    writer = csv.writer(output, lineterminator="\n")
+
+    # Header
+    writer.writerow(["Feature"] + feature_matrix.competitor_names + ["Classification"])
+
+    # Data rows
+    for row in feature_matrix.rows:
+        cells = [row.feature]
+        for name in feature_matrix.competitor_names:
+            cells.append(row.competitors.get(name, ""))
+        cells.append(row.classification)
+        writer.writerow(cells)
+
+    return output.getvalue()
+
+
 def compile_digest(
     radar_signals: list[Signal],
     monitor_diffs: list[Diff],

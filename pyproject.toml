@@ -2,7 +2,7 @@
 name = "lookout"
 version = "0.1.0"
 description = "CLI that scans the competitive landscape for unknown entrants and tracks known competitors for changes"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = [
     "click>=8.1",
     "anthropic>=0.40",

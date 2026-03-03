@@ -28,7 +28,7 @@ Lookout uses Claude's web search as its sole data source. No scraping, no browse
 
 **Feature Landscape** — After monitor scans, builds a cross-competitor feature matrix. Normalizes feature names across competitors and classifies each as table stakes (>50% have it), differentiating (minority), or unique (only one). Renders as a Rich table in the CLI and an HTML table in email digests.
 
-**Digest** — Combines everything into an HTML email with an executive summary, feature landscape, competitive wedge analysis (how findings affect your positioning), threat assessments, and change alerts with clickable sources.
+**Digest** — Combines everything into an HTML email with an executive summary, feature landscape, competitive wedge analysis (how findings affect your positioning), threat assessments, and change alerts with clickable sources. Emails include a standalone markdown report and CSV feature matrix as attachments.
 
 **Historical context** — On repeat scans, Lookout loads the previous report, diffs it against the current one, and injects the changes into the summary prompt. The executive summary narrates what changed — new entrants, departures, score movements, and resolved issues.
 
@@ -148,7 +148,7 @@ Pipeline per scan:
 3. **Auto-track** — Medium/high-threat radar signals are added to the config and monitored in the same run
 4. **Feature landscape** — Loads latest snapshots, extracts features for competitors with data, and classifies each as table stakes, differentiating, or unique
 5. **Historical diff** — Loads the previous report and computes what changed since last scan
-6. **Digest** — Compiles everything into a ScanResult, generates HTML, and saves to `reports/`
+6. **Digest** — Compiles everything into a ScanResult, generates HTML, markdown, and CSV feature matrix, saves all formats to `reports/`, and attaches markdown + CSV to emails
 
 ## Cost
 
@@ -162,7 +162,7 @@ uv run pytest tests/
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.13+
 - [uv](https://docs.astral.sh/uv/) (recommended) or pip
 - [Anthropic API key](https://console.anthropic.com/) (required)
 - [Resend API key](https://resend.com/) (for email delivery, optional)

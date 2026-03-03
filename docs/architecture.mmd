@@ -44,14 +44,10 @@ flowchart TD
     executive summary"]
     R --> S["Compile digest"]
     S --> T["Save report to reports/
-    JSON + HTML"]
+    JSON + HTML + Markdown + CSV"]
 
-    T --> U["Generate HTML email
-    with executive summary,
-    feature landscape,
-    competitive wedge analysis,
-    radar & monitor alerts"]
-
-    U --> V{"--no-email flag?"}
-    V -- "Yes" --> W["Output to terminal"]
-    V -- "No" --> X["Send email via Resend"]
+    T --> U{"--no-email flag?"}
+    U -- "Yes" --> W["Output to terminal"]
+    U -- "No" --> X["Send HTML email via Resend
+    with markdown report and
+    CSV feature matrix attached"]

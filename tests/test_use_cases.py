@@ -219,3 +219,107 @@ def test_build_feature_matrix_from_response():
     assert matrix.rows[0].feature == "SSO"
     assert matrix.rows[1].competitors["Acme"] == "White-label"
     assert matrix.rows[1].classification == "unique"
+
+
+def test_build_markdown_digest_full():
+    """build_markdown_digest renders all sections into a standalone markdown doc."""
+    from lookout.domain.entities import ScanResult
+    from lookout.use_cases.compile_digest import build_markdown_digest
+
+    matrix = FeatureMatrix(
+        competitor_names=["Acme", "Globex"],
+        rows=[
+            FeatureRow(feature="SSO", competitors={"Acme": "Y", "Globex": "Y"}, classification="table_stakes"),
+            FeatureRow(feature="AI Reports", competitors={"Acme": "Y"}, classification="unique"),
+        ],
+    )
+    signals = [
+        Signal(
+            name="NewCo",
+            website="https://newco.com",
+            description="A new competitor",
+            relevance_score=75,
+            threat_level=ThreatLevel.HIGH,
+            reasoning="Direct competitor",
+            icp_overlap="Same market segment",
+            key_differentiators="Better UX",
+        )
+    ]
+    diffs = [
+        Diff(
+            competitor_name="OldCo",
+            changes=[
+                Change(
+                    category="pricing_changes",
+                    summary="Raised prices 20%",
+                    severity=ChangeSeverity.MEDIUM,
+                    impact_assessment="May lose price-sensitive customers",
+                    source_urls=["https://oldco.com/pricing"],
+                )
+            ],
+        ),
+        Diff(competitor_name="QuietCo", changes=[]),
+    ]
+    sr = ScanResult(
+        radar_signals=signals,
+        monitor_diffs=diffs,
+        summary="**Landscape Overview**\nKey findings here.",
+        feature_matrix=matrix,
+    )
+
+    md = build_markdown_digest(sr, "TestCorp")
+
+    # Header
+    assert "# Lookout Report — TestCorp" in md
+    # Summary
+    assert "## Executive Summary" in md
+    assert "Key findings here." in md
+    # Feature landscape as markdown table
+    assert "## Feature Landscape" in md
+    assert "| Feature |" in md
+    assert "| SSO |" in md
+    assert "| AI Reports |" in md
+    # Radar
+    assert "## Radar Alerts" in md
+    assert "### NewCo" in md
+    assert "HIGH" in md
+    assert "75" in md
+    assert "Direct competitor" in md
+    assert "Same market segment" in md
+    assert "Better UX" in md
+    assert "https://newco.com" in md
+    # Monitor
+    assert "## Monitor Alerts" in md
+    assert "### OldCo" in md
+    assert "Raised prices 20%" in md
+    assert "MEDIUM" in md
+    assert "May lose price-sensitive customers" in md
+    assert "https://oldco.com/pricing" in md
+    # No-changes note
+    assert "QuietCo" in md
+
+
+def test_build_markdown_digest_empty():
+    """build_markdown_digest handles empty scan results gracefully."""
+    from lookout.domain.entities import ScanResult
+    from lookout.use_cases.compile_digest import build_markdown_digest
+
+    sr = ScanResult()
+    md = build_markdown_digest(sr, "TestCorp")
+
+    assert "# Lookout Report — TestCorp" in md
+    assert "## Radar Alerts" not in md
+    assert "## Monitor Alerts" not in md
+    assert "## Feature Landscape" not in md
+
+
+def test_build_markdown_digest_no_feature_matrix():
+    """build_markdown_digest omits feature landscape when matrix is None."""
+    from lookout.domain.entities import ScanResult
+    from lookout.use_cases.compile_digest import build_markdown_digest
+
+    sr = ScanResult(summary="Some findings.")
+    md = build_markdown_digest(sr, "TestCorp")
+
+    assert "## Executive Summary" in md
+    assert "## Feature Landscape" not in md

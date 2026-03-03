@@ -23,7 +23,7 @@ from lookout.infrastructure.config_loader import load_config
 from lookout.infrastructure.file_report_store import FileReportStore
 from lookout.infrastructure.file_snapshot_store import FileSnapshotStore
 from lookout.infrastructure.resend_sender import ResendSender
-from lookout.use_cases.compile_digest import build_feature_matrix_from_response, build_html_digest, compile_digest
+from lookout.use_cases.compile_digest import build_feature_matrix_from_response, build_html_digest, compile_digest, DigestOutput
 from lookout.use_cases.monitor_scan import run_monitor_scan, run_single_monitor
 from lookout.use_cases.radar_scan import run_radar_scan
 from lookout.use_cases.report_diff import diff_reports, format_diff_for_prompt
@@ -355,7 +355,8 @@ def scan(config: str, email: str | None, no_email: bool):
     digest = compile_digest(radar_signals, monitor_diffs, summary, cfg.company.name, feature_matrix=feature_matrix)
 
     # Save report
-    report_store.save(digest.scan_result, digest.html, cfg.company.name)
+    report_store.save(digest.scan_result, digest.html, cfg.company.name,
+                      markdown=digest.markdown, feature_csv=digest.feature_csv)
     console.print("[dim]Report saved to reports/[/dim]")
 
     # Display results
@@ -368,12 +369,22 @@ def scan(config: str, email: str | None, no_email: bool):
             console.print("[yellow]Warning:[/yellow] No email recipient configured. Use --email or set in config.")
             return
 
+        import base64
+        attachments = [
+            {"filename": "lookout-report.md", "content": base64.b64encode(digest.markdown.encode()).decode()},
+        ]
+        if digest.feature_csv:
+            attachments.append(
+                {"filename": "feature-matrix.csv", "content": base64.b64encode(digest.feature_csv.encode()).decode()},
+            )
+
         resend_key = _get_resend_key()
         sender = ResendSender(api_key=resend_key)
         subject = f"{cfg.email.subject_prefix} Competitive Intelligence Digest"
 
         with console.status("[bold]Sending email...[/bold]"):
-            success = sender.send(to=recipient, from_addr=cfg.email.from_addr, subject=subject, html_body=digest.html)
+            success = sender.send(to=recipient, from_addr=cfg.email.from_addr, subject=subject,
+                                  html_body=digest.html, attachments=attachments)
 
         if success:
             console.print(f"\n[green]Email sent to {recipient}[/green]")
@@ -572,16 +583,27 @@ def report(config: str, email: str | None):
     digest = compile_digest(radar_signals, monitor_diffs, summary, cfg.company.name, feature_matrix=feature_matrix)
 
     # Save report
-    report_store.save(digest.scan_result, digest.html, cfg.company.name)
+    report_store.save(digest.scan_result, digest.html, cfg.company.name,
+                      markdown=digest.markdown, feature_csv=digest.feature_csv)
     console.print("[dim]Report saved to reports/[/dim]")
 
     _display_results(digest.scan_result)
 
     if email:
+        import base64
+        attachments = [
+            {"filename": "lookout-report.md", "content": base64.b64encode(digest.markdown.encode()).decode()},
+        ]
+        if digest.feature_csv:
+            attachments.append(
+                {"filename": "feature-matrix.csv", "content": base64.b64encode(digest.feature_csv.encode()).decode()},
+            )
+
         resend_key = _get_resend_key()
         sender = ResendSender(api_key=resend_key)
         subject = f"{cfg.email.subject_prefix} Competitive Intelligence Report"
-        success = sender.send(to=email, from_addr=cfg.email.from_addr, subject=subject, html_body=digest.html)
+        success = sender.send(to=email, from_addr=cfg.email.from_addr, subject=subject,
+                              html_body=digest.html, attachments=attachments)
         if success:
             console.print(f"\n[green]Report sent to {email}[/green]")
         else:

@@ -19,10 +19,11 @@ Strategy:
 - Combine the provided keywords with terms like "funding", "launch", "startup", "seed round", "new product", "series A", "2024", "2025", "2026"
 - Search for funding announcements, press releases, and product launches
 - Check startup databases, tech news sites, and industry publications
+- Search for community recommendations and user discussions — comparison articles, "best of" roundups, review sites like G2/Capterra, and forum threads often surface competitors that lack marketing/SEO presence but have real user traction. Try queries like "best [keyword]", "[keyword] alternatives", and "[keyword] comparison"
 - Cast a wide net — run multiple diverse searches rather than variations of the same query
 - Look for companies across different geographies (US, Canada, Europe, etc.)
 
-Focus on companies founded or funded in the last 18 months.
+Focus on companies founded or funded in the last 18 months, but also include established competitors discovered through community discussions that may have been operating under the radar.
 
 For each company you find, extract:
 - name
